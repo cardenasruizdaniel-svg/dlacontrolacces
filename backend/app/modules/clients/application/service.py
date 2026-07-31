@@ -105,12 +105,29 @@ class ClientService:
         updated = await self.client_repo.update(client_id, **kwargs)
         return self._serialize_client(updated)
 
-    async def delete_client(self, client_id: str) -> dict:
+    async def delete_client(self, client_id: str, db: any = None) -> dict:
         client = await self.client_repo.get_by_id(client_id)
         if not client:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente no encontrado")
+
+        if db:
+            from sqlalchemy import select, func
+            from app.shared.database.models_access import AccessRecord
+            from app.shared.database.models_scheduling import Shift, ScheduleSeries
+
+            access_count = (await db.execute(select(func.count(AccessRecord.id)).where(AccessRecord.client_id == client_id))).scalar() or 0
+            shift_count = (await db.execute(select(func.count(Shift.id)).where(Shift.client_id == client_id))).scalar() or 0
+            series_count = (await db.execute(select(func.count(ScheduleSeries.id)).where(ScheduleSeries.client_id == client_id))).scalar() or 0
+
+            total_movements = access_count + shift_count + series_count
+            if total_movements > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se puede eliminar el cliente o sede '{client.name}' porque cuenta con {total_movements} movimientos o turnos asociados necesarios para informes y trazabilidad. Se recomienda cambiar su estado a 'Inactivo' o modificar la información."
+                )
+
         await self.client_repo.soft_delete(client_id)
-        return {"message": "Client deleted successfully"}
+        return {"message": "Cliente eliminado correctamente"}
 
     async def update_status(self, client_id: str, new_status: str) -> dict:
         client = await self.client_repo.get_by_id(client_id)
@@ -194,3 +211,56 @@ class ClientService:
     async def get_company_stats(self, company_id: str) -> dict:
         total = await self.client_repo.count_by_company(company_id)
         return {"total_clients": total}
+
+    async def bulk_import_clients(self, company_id: str, clients_data: list[dict]) -> dict:
+        created_count = 0
+        skipped_count = 0
+        errors = []
+
+        for idx, data in enumerate(clients_data):
+            name = str(data.get("name", "")).strip()
+            nit = str(data.get("nit", "")).strip()
+
+            if not name:
+                errors.append(f"Fila {idx + 1}: El nombre del cliente es obligatorio")
+                skipped_count += 1
+                continue
+
+            try:
+                lat = float(data["latitude"]) if data.get("latitude") and str(data["latitude"]).strip() else None
+                lon = float(data["longitude"]) if data.get("longitude") and str(data["longitude"]).strip() else None
+                geo_r = float(data["geofence_radius"]) if data.get("geofence_radius") and str(data["geofence_radius"]).strip() else 100.0
+            except Exception:
+                lat, lon, geo_r = None, None, 100.0
+
+            try:
+                client_dict = {
+                    "company_id": company_id or "dla-company-main",
+                    "name": name,
+                    "nit": nit or f"NIT-{idx+1}",
+                    "trade_name": str(data.get("trade_name", "")).strip() or name,
+                    "client_type": str(data.get("client_type", "enterprise")).strip(),
+                    "email": str(data.get("email", "")).strip() or None,
+                    "phone": str(data.get("phone", "")).strip() or None,
+                    "mobile": str(data.get("mobile", "")).strip() or None,
+                    "address": str(data.get("address", "")).strip() or "Dirección Principal",
+                    "department": str(data.get("department", "Quindío")).strip(),
+                    "city": str(data.get("city", "Armenia")).strip(),
+                    "notes": str(data.get("notes", "")).strip() or None,
+                    "latitude": lat,
+                    "longitude": lon,
+                    "geofence_radius": geo_r,
+                    "status": "active",
+                }
+                await self.client_repo.create(**client_dict)
+                created_count += 1
+            except Exception as e:
+                skipped_count += 1
+                errors.append(f"Fila {idx + 1} ({name}): Error de guardado: {str(e)}")
+
+        return {
+            "created_count": created_count,
+            "skipped_count": skipped_count,
+            "total_processed": len(clients_data),
+            "errors": errors,
+        }

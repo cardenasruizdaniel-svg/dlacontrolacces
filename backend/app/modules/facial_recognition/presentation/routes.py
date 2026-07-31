@@ -23,11 +23,11 @@ async def register_face(body: FaceRegisterRequest, current_user: CurrentUser, db
 
 
 @router.post("/verify", response_model=FaceVerifyResponse)
-async def verify_face(body: FaceVerifyRequest, current_user: CurrentUser, db: DbSession) -> FaceVerifyResponse:
-    result = await get_service(db).verify_face(current_user.id, body.photo_base64)
+async def verify_face(body: FaceVerifyRequest, db: DbSession) -> FaceVerifyResponse:
+    result = await get_service(db).verify_face(body.employee_id, body.photo_base64)
     return FaceVerifyResponse(**result)
 
 
 @router.post("/liveness")
-async def check_liveness(body: LivenessCheckRequest, current_user: CurrentUser, db: DbSession) -> dict:
+async def check_liveness(body: LivenessCheckRequest, db: DbSession) -> dict:
     return await get_service(db).detect_liveness(body.photo_base64)

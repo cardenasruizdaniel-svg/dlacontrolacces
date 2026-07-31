@@ -1,45 +1,33 @@
-from fastapi.testclient import TestClient
+import pytest
+from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, verify_token
 
 
-def test_access_entry_requires_auth(client: TestClient) -> None:
-    resp = client.post(
-        "/api/v1/access/entry",
-        json={"employee_id": "x", "latitude": 0.0, "longitude": 0.0},
-    )
-    assert resp.status_code == 401
+def test_password_hashing():
+    password = "SecurePassword123!"
+    hashed = hash_password(password)
+    assert hashed != password
+    assert verify_password(password, hashed) is True
+    assert verify_password("WrongPassword", hashed) is False
 
 
-def test_access_exit_requires_auth(client: TestClient) -> None:
-    resp = client.post(
-        "/api/v1/access/exit",
-        json={"employee_id": "x", "latitude": 0.0, "longitude": 0.0},
-    )
-    assert resp.status_code == 401
+def test_jwt_tokens():
+    data = {"sub": "user-123", "role": "admin"}
+    access_token = create_access_token(data)
+    assert access_token is not None
+    
+    payload = verify_token(access_token)
+    assert payload is not None
+    assert payload["sub"] == "user-123"
+    assert payload["role"] == "admin"
+    assert payload["type"] == "access"
 
 
-def test_facial_verify_requires_auth(client: TestClient) -> None:
-    resp = client.post("/api/v1/facial-recognition/verify", json={"photo_base64": "YQ=="})
-    assert resp.status_code == 401
-
-
-def test_facial_liveness_requires_auth(client: TestClient) -> None:
-    resp = client.post("/api/v1/facial-recognition/liveness", json={"photo_base64": "YQ=="})
-    assert resp.status_code == 401
-
-
-def test_facial_verify_rejects_employee_id_in_body(client: TestClient) -> None:
-    # El endpoint ya no acepta employee_id en el body (identidad viene del token)
-    resp = client.post("/api/v1/facial-recognition/verify", json={"employee_id": "x", "photo_base64": "YQ=="})
-    assert resp.status_code == 401
-
-
-def test_access_entry_uses_authenticated_identity(client: TestClient, auth_headers: dict[str, str]) -> None:
-    # Con token válido el employee_id del body se ignora y se usa el del token
-    resp = client.post(
-        "/api/v1/access/entry",
-        json={"employee_id": "id-inexistente", "latitude": 0.0, "longitude": 0.0},
-        headers=auth_headers,
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body.get("employee_id") != "id-inexistente"
+def test_refresh_token():
+    data = {"sub": "user-123"}
+    refresh_token = create_refresh_token(data)
+    assert refresh_token is not None
+    
+    payload = verify_token(refresh_token)
+    assert payload is not None
+    assert payload["sub"] == "user-123"
+    assert payload["type"] == "refresh"

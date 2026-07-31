@@ -1,115 +1,116 @@
-const CACHE_NAME = "dla-access-v2";
-const STATIC_CACHE = "dla-access-static-v1";
-const API_CACHE = "dla-access-api-v1";
+const CACHE_NAME = "dla-access-enterprise-v1";
 
-const STATIC_ASSETS = [
+const PRECACHE_ASSETS = [
   "/",
-  "/login",
   "/dashboard",
-  "/shift",
-  "/my-scheduling",
-  "/payroll",
-  "/profile",
-  "/profile/history",
-  "/help",
-  "/settings",
+  "/mobile-preview",
   "/manifest.json",
   "/icons/icon-192.svg",
-  "/icons/icon-512.svg",
+  "/icons/icon-512.svg"
 ];
 
+// Install Event - Pre-cache App Shell
 self.addEventListener("install", (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
+        console.warn("ServiceWorker precache warning:", err);
+      });
     })
   );
-  self.skipWaiting();
 });
 
+// Activate Event - Clean old caches & claim clients
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
+    caches.keys().then((cacheNames) => {
       return Promise.all(
-        keys.filter((k) => k !== STATIC_CACHE && k !== API_CACHE).map((k) => caches.delete(k))
+        cacheNames.map((name) => {
+          if (name !== CACHE_NAME) {
+            return caches.delete(name);
+          }
+        })
       );
     }).then(() => self.clients.claim())
   );
 });
 
-self.addEventListener("message", (event) => {
-  if (event.data === "SKIP_WAITING") {
-    self.skipWaiting();
-  }
-});
-
+// Fetch Event - Dynamic caching strategy
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Backend API calls: network-first with offline fallback
-  if (url.pathname.startsWith("/api/") || url.hostname !== location.hostname) {
-    event.respondWith(networkFirst(request, API_CACHE));
+  // Skip non-GET requests for standard caching (POST requests handled by IndexedDB offline queue)
+  if (request.method !== "GET") {
     return;
   }
 
-  // Navigation: network-first, fallback to cache for SPA
-  if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request, STATIC_CACHE));
+  // API Requests: Network-First strategy with Cache Fallback
+  if (url.pathname.startsWith("/api/")) {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse.status === 200) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(request).then((cachedResponse) => {
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            return new Response(
+              JSON.stringify({ error: "Sin conexión a Internet. Operando en Modo Offline PWA." }),
+              { status: 503, headers: { "Content-Type": "application/json" } }
+            );
+          });
+        })
+    );
     return;
   }
 
-  // Static assets: cache-first (styles, scripts, fonts, images)
-  if (
-    request.destination === "style" ||
-    request.destination === "script" ||
-    request.destination === "font" ||
-    request.destination === "image" ||
-    request.destination === "document"
-  ) {
-    event.respondWith(cacheFirst(request, STATIC_CACHE));
-    return;
-  }
+  // Static Assets & Pages: Cache-First strategy with Network Fallback
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      if (cachedResponse) {
+        // Refresh cache in background
+        fetch(request).then((networkResponse) => {
+          if (networkResponse.status === 200) {
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, networkResponse));
+          }
+        }).catch(() => {});
+        return cachedResponse;
+      }
 
-  // Everything else: network-first
-  event.respondWith(networkFirst(request, STATIC_CACHE));
+      return fetch(request).then((networkResponse) => {
+        if (networkResponse.status === 200 && request.url.startsWith("http")) {
+          const responseClone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+        }
+        return networkResponse;
+      }).catch(() => {
+        if (request.headers.get("accept")?.includes("text/html")) {
+          return caches.match("/dashboard") || caches.match("/");
+        }
+      });
+    })
+  );
 });
 
-async function cacheFirst(request, cacheName) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-  try {
-    const response = await fetch(request);
-    if (response.ok && response.type === "basic") {
-      const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch {
-    return new Response(JSON.stringify({ error: "offline" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
+// Background Sync Event
+self.addEventListener("sync", (event) => {
+  if (event.tag === "dla-sync-queue") {
+    event.waitUntil(
+      self.clients.matchAll().then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: "TRIGGER_OFFLINE_SYNC" });
+        });
+      })
+    );
   }
-}
-
-async function networkFirst(request, cacheName) {
-  try {
-    const response = await fetch(request);
-    if (response.ok && response.type === "basic") {
-      const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    if (request.mode === "navigate") {
-      return caches.match("/login") || new Response("Offline", { status: 503 });
-    }
-    return new Response(JSON.stringify({ error: "offline" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-}
+});

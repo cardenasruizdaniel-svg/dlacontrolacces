@@ -41,8 +41,9 @@ class ClientRepository:
         query = select(Client).where(Client.is_deleted == False)
         count_q = select(func.count(Client.id)).where(Client.is_deleted == False)
         if company_id:
-            query = query.where(Client.company_id == company_id)
-            count_q = count_q.where(Client.company_id == company_id)
+            comp_filter = (Client.company_id == company_id) | (Client.company_id == None) | (Client.company_id == "dla-company-main")
+            query = query.where(comp_filter)
+            count_q = count_q.where(comp_filter)
         if client_type:
             query = query.where(Client.client_type == client_type)
             count_q = count_q.where(Client.client_type == client_type)

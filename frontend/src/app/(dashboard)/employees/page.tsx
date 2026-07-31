@@ -7,8 +7,210 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Pencil, Trash2, Eye } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Eye, AlertCircle, CheckCircle2, Download, Upload, FileText } from "lucide-react";
+
+// Complete official dataset of Colombian Departments and All Municipalities
+const DEFAULT_DEPARTMENTS = [
+  "Amazonas", "Antioquia", "Arauca", "Atlántico", "Bogotá D.C.", "Bolívar", "Boyacá", "Caldas",
+  "Caquetá", "Casanare", "Cauca", "Cesar", "Chocó", "Córdoba", "Cundinamarca", "Guainía",
+  "Guaviare", "Huila", "La Guajira", "Magdalena", "Meta", "Nariño", "Norte de Santander",
+  "Putumayo", "Quindío", "Risaralda", "San Andrés y Providencia", "Santander", "Sucre",
+  "Tolima", "Valle del Cauca", "Vaupés", "Vichada"
+];
+
+const COLOMBIAN_CITIES_BY_DEPT: Record<string, string[]> = {
+  "Amazonas": ["Leticia", "Puerto Nariño", "La Chorrera", "El Encanto", "Puerto Alegría", "Puerto Arica", "Puerto Santander", "Tarapacá"],
+  "Antioquia": [
+    "Medellín", "Abejorral", "Abriaquí", "Alejandría", "Amagá", "Amalfi", "Andes", "Angelópolis", "Angostura", "Anorí",
+    "Santa Fe de Antioquia", "Anzá", "Apartadó", "Arboletes", "Argelia", "Armenia", "Barbosa", "Bello", "Belmira", "Betania",
+    "Betulia", "Ciudad Bolívar", "Briceño", "Buriticá", "Cáceres", "Caicedo", "Caldas", "Campamento", "Cañasgordas", "Caracolí",
+    "Caramanta", "Carepa", "El Carmen de Viboral", "Carolina", "Caucasia", "Chigorodó", "Cisneros", "Cocorná", "Concepción", "Concordia",
+    "Copacabana", "Dabeiba", "Donmatías", "Ebéjico", "El Bagre", "Entrerríos", "Envigado", "Fredonia", "Frontino", "Giraldo",
+    "Girardota", "Gómez Plata", "Granada", "Guadalupe", "Guarne", "Guatapé", "Heliconia", "Hispania", "Itagüí", "Ituango",
+    "Jardín", "Jericó", "La Ceja", "La Estrella", "La Pintada", "La Unión", "Liborina", "Maceo", "Marinilla", "Montebello",
+    "Murindó", "Mutatá", "Nariño", "Nechí", "Necoclí", "Olaya", "Peñol", "Peque", "Pueblorrico", "Puerto Berrío",
+    "Puerto Nare", "Puerto Triunfo", "Remedios", "Retiro", "Rionegro", "Sabanalarga", "Sabaneta", "Salgar", "San Andrés de Cuerquia", "San Carlos",
+    "San Francisco", "San Jerónimo", "San José de la Montaña", "San Juan de Urabá", "San Luis", "San Pedro de los Milagros", "San Pedro de Urabá", "San Rafael", "San Roque", "San Vicente Ferrer",
+    "Santa Bárbara", "Santa Rosa de Osos", "Santo Domingo", "El Santuario", "Segovia", "Sonsón", "Sopetrán", "Táamesis", "Tarazá", "Tarso",
+    "Titiribí", "Toledo", "Turbo", "Uramita", "Urrao", "Valdivia", "Valparaíso", "Vegachí", "Venecia", "Vigía del Fuerte",
+    "Yalí", "Yarumal", "Yolombó", "Yondó", "Zaragoza"
+  ],
+  "Arauca": ["Arauca", "Arauquita", "Cravo Norte", "Fortul", "Puerto Rondón", "Saravena", "Tame"],
+  "Atlántico": [
+    "Barranquilla", "Baranoa", "Campo de la Cruz", "Candelaria", "Galapa", "Juan de Acosta", "Luruaco", "Malambo", "Manatí", "Palmar de Varela",
+    "Piojó", "Polonuevo", "Ponedera", "Puerto Colombia", "Repelón", "Sabanagrande", "Sabanalarga", "Santa Lucía", "Santo Tomás", "Soledad",
+    "Suan", "Tubará", "Usiacurí"
+  ],
+  "Bogotá D.C.": ["Bogotá D.C."],
+  "Bolívar": [
+    "Cartagena de Indias", "Achí", "Altos del Rosario", "Arenal", "Arjona", "Arroyohondo", "Barranco de Loba", "Calamar", "Cantagallo", "Cicuco",
+    "Clemencia", "Córdoba", "El Carmen de Bolívar", "El Guamo", "El Peñón", "Hatillo de Loba", "Magangué", "Mahates", "Margarita", "María La Baja",
+    "Montecristo", "Mompós", "Morales", "Norosí", "Pinillos", "Regidor", "Río Viejo", "San Cristóbal", "San Estanislao", "San Fernando",
+    "San Jacinto", "San Jacinto del Cauca", "San Juan Nepomuceno", "San Martín de Loba", "San Pablo", "Santa Catalina", "Santa Rosa", "Santa Rosa del Sur",
+    "Simití", "Soplaviento", "Talaigua Nuevo", "Tiquisio", "Turbaco", "Turbaná", "Villanueva", "Zambrano"
+  ],
+  "Boyacá": [
+    "Tunja", "Almeida", "Aquitania", "Arcabuco", "Belén", "Berbeo", "Betéitiva", "Boavita", "Buenavista", "Busbanzá",
+    "Caldas", "Campohermoso", "Cerinza", "Chinavita", "Chiquinquirá", "Chíscas", "Chita", "Chitaraque", "Chivatá", "Ciénega",
+    "Cómbita", "Coper", "Corrales", "Covarachía", "Cubará", "Cucaita", "Cuítiva", "Duitama", "El Cocuy", "El Espino",
+    "Firavitoba", "Floresta", "Gachantivá", "Gámeza", "Garagoa", "Guacamayas", "Guateque", "Guayatá", "Güicán", "Izá",
+    "Jenesano", "Jericó", "Labranzagrande", "La Capilla", "La Victoria", "La Uvita", "Villa de Leyva", "Macanal", "Maripí", "Miraflores",
+    "Mongua", "Monguí", "Moniquirá", "Motavita", "Muzo", "Nobsa", "Nuevo Colón", "Oicatá", "Otanche", "Pachavita",
+    "Páez", "Paipa", "Pajarito", "Panqueba", "Pauna", "Paya", "Paz de Río", "Pesca", "Pisba", "Puerto Boyacá",
+    "Quípama", "Ramiriquí", "Ráquira", "Rondón", "Saboyá", "Sáchica", "Samacá", "San Eduardo", "San Mateo", "San Miguel de Sema",
+    "San José de Pare", "San Luis de Gaceno", "Santa Sofía", "Santa María", "Santa Rosa de Viterbo", "Siachoque", "Soatá", "Socha",
+    "Socotá", "Sogamoso", "Somondoco", "Sora", "Sotaquirá", "Soracá", "Susacón", "Sutamarchán", "Sutatenza", "Tasco",
+    "Tenza", "Tibaná", "Tibasosa", "Tinjacá", "Tipacoque", "Toca", "Togüí", "Tota", "Tununguá", "Turmequé",
+    "Tuta", "Tutazá", "Úmbita", "Ventaquemada", "Viracachá", "Zetaquira"
+  ],
+  "Caldas": [
+    "Manizales", "Aguadas", "Anserma", "Aranzazu", "Belalcázar", "Chinchiná", "Filadelfia", "La Dorada", "La Merced", "Manzanares",
+    "Marmato", "Marquetalia", "Marulanda", "Neira", "Norcasia", "Pácora", "Palestina", "Pensilvania", "Riosucio", "Risaralda",
+    "Salamina", "Samaná", "San José", "Supía", "Victoria", "Villamaría", "Viterbo"
+  ],
+  "Caquetá": [
+    "Florencia", "Albania", "Belén de los Andaquíes", "Cartagena del Chairá", "Curillo", "El Doncello", "El Paujil", "La Montañita", "Milán", "Morelia",
+    "Puerto Rico", "San José del Fragua", "San Vicente del Caguán", "Solano", "Solita", "Valparaíso"
+  ],
+  "Casanare": [
+    "Yopal", "Aguazul", "Chámeza", "Hato Corozal", "La Salina", "Maní", "Monterrey", "Nunchía", "Orocué", "Paz de Ariporo",
+    "Pore", "Recetor", "Sabanalarga", "Sácama", "San Luis de Palenque", "Támara", "Tauramena", "Trinidad", "Villanueva"
+  ],
+  "Cauca": [
+    "Popayán", "Almaguer", "Argelia", "Balboa", "Bolívar", "Buenos Aires", "Cajibío", "Caldono", "Caloto", "Corinto",
+    "El Tambo", "Florencia", "Guachené", "Guapí", "Inzá", "Jambaló", "La Sierra", "La Vega", "López de Micay", "Mercaderes",
+    "Miranda", "Morales", "Padilla", "Páez", "Piamonte", "Piendamó", "Puerto Tejada", "Puracé", "Rosas", "San Sebastián",
+    "Santa Rosa", "Santander de Quilichao", "Silvia", "Sotará", "Suárez", "Sucre", "Timbío", "Timbiquí", "Toribío", "Totoró", "Villa Rica"
+  ],
+  "Cesar": [
+    "Valledupar", "Aguachica", "Agustín Codazzi", "Astrea", "Becerril", "Bosconia", "Chimichagua", "Chiriguaná", "Curumaní", "El Copey",
+    "El Paso", "Gamarra", "González", "La Gloria", "La Paz", "Manaure Balcón del Cesar", "Pailitas", "Pelaya", "Pueblo Bello", "Río de Oro",
+    "La Jagua de Ibirico", "San Alberto", "San Diego", "San Martín", "Tamalameque"
+  ],
+  "Chocó": [
+    "Quibdó", "Acandí", "Alto Baudó", "Atrato", "Bagadó", "Bahía Solano", "Bajo Baudó", "Bojayá", "El Cantón del San Pablo", "Carmen del Darién",
+    "Cértegui", "Condoto", "El Carmen de Atrato", "El Litoral del San Juan", "Istmina", "Juradó", "Lloró", "Medio Atrato", "Medio Baudó", "Medio San Juan",
+    "Nóvita", "Nuquí", "Río Iró", "Río Quito", "Riosucio", "San José del Palmar", "Sipí", "Tadó", "Unguía", "Unión Panamericana"
+  ],
+  "Córdoba": [
+    "Montería", "Ayapel", "Buenavista", "Canalete", "Cereté", "Chimá", "Chinú", "Ciénaga de Oro", "Cotorra", "La Apartada",
+    "Lorica", "Los Córdobas", "Momil", "Montelíbano", "Moñitos", "Planeta Rica", "Pueblo Nuevo", "Puerto Escondido", "Puerto Libertador", "Purísima",
+    "Sahagún", "San Andrés de Sotavento", "San Antero", "San Bernardo del Viento", "San Carlos", "San José de Uré", "San Pelayo", "Tierralta", "Tuchín", "Valencia"
+  ],
+  "Cundinamarca": [
+    "Soacha", "Chía", "Zipaquirá", "Fusagasugá", "Facatativá", "Mosquera", "Madrid", "Funza", "Cajicá", "Girardot",
+    "Agua de Dios", "Albán", "Anapoima", "Anolaima", "Apulo", "Arbeláez", "Beltrán", "Bituima", "Bojacá", "Cabrera",
+    "Cachipay", "Caparrapí", "Cáqueza", "Carmen de Carupa", "Chaguaní", "Chipaque", "Choachí", "Chocontá", "Cogua", "Cota",
+    "Cucunubá", "El Colegio", "El Peñón", "El Rosal", "Fómeque", "Fosca", "Fúquene", "Gachalá", "Gachancipá", "Gachetá",
+    "Gama", "Granada", "Guachetá", "Guaduas", "Guasca", "Guataquí", "Guatavita", "Guayabal de Síquima", "Guayabetal", "Gutiérrez",
+    "Jerusalén", "Junín", "La Calera", "La Mesa", "La Palma", "La Peña", "La Vega", "Lenguazaque", "Machetá", "Manta",
+    "Medina", "Nariño", "Nemocón", "Nilo", "Nimaima", "Nocaima", "Venecia", "Pacho", "Paime", "Pandi", "Paratebueno",
+    "Pasca", "Puerto Salgar", "Pulí", "Quebradanegra", "Quetame", "Quipile", "Ricaurte", "San Antonio del Tequendama", "San Bernardo", "San Cayetano",
+    "San Francisco", "San Juan de Rioseco", "Sasaima", "Sesquilé", "Sibaté", "Silvania", "Simijaca", "Sopó", "Subachoque", "Suesca",
+    "Susa", "Sutatausa", "Tabio", "Tausa", "Tena", "Tenjo", "Tibacuy", "Tibirita", "Tocaima", "Tocancipá", "Topaipí",
+    "Ubalá", "Ubaque", "Villa de San Diego de Ubaté", "Une", "Útica", "Vergara", "Vianí", "Villagómez", "Villapinzón", "Villeta",
+    "Viotá", "Yacopí", "Zipacón"
+  ],
+  "Guainía": ["Inírida", "Barrancominas", "Mapiripana", "San Felipe", "Puerto Colombia", "La Guadalupe", "Cacahual", "Pana Pana", "Morichal"],
+  "Guaviare": ["San José del Guaviare", "Calamar", "El Retorno", "Miraflores"],
+  "Huila": [
+    "Neiva", "Acevedo", "Agrado", "Aipe", "Algeciras", "Altamira", "Baraya", "Campoalegre", "Colombia", "Elías",
+    "Garzón", "Gigante", "Guadalupe", "Hobo", "Íquira", "Isnos", "La Argentina", "La Plata", "Nátaga", "Oporapa",
+    "Paicol", "Palermo", "Palestina", "Pital", "Pitalito", "Rivera", "Saladoblanco", "San Agustín", "Santa María", "Suaza",
+    "Tarqui", "Tesalia", "Tello", "Teruel", "Timaná", "Villavieja", "Yaguará"
+  ],
+  "La Guajira": [
+    "Riohacha", "Albania", "Barrancas", "Dibulla", "Distracción", "El Molino", "Fonseca", "Hatonuevo", "La Jagua del Pilar", "Maicao",
+    "Manaure", "San Juan del Cesar", "Uribia", "Urumita", "Villanueva"
+  ],
+  "Magdalena": [
+    "Santa Marta", "Algarrobo", "Aracataca", "Ariguaní", "Cerro de San Antonio", "Chibolo", "Ciénaga", "El Banco", "El Piñón", "El Retén",
+    "Fundación", "Guamal", "Nueva Granada", "Pedraza", "Pijiño del Carmen", "Pivijay", "Plato", "Puebloviejo", "Remolino", "Sabanas de San Ángel",
+    "Salamina", "San Zenón", "San Sebastián de Buenavista", "Sitionuevo", "Tenerife", "Zapayán", "Zona Bananera"
+  ],
+  "Meta": [
+    "Villavicencio", "Acacías", "Barranca de Upía", "Cabuyaro", "Castilla la Nueva", "Cubarral", "Cumaral", "El Calvario", "El Castillo", "El Dorado",
+    "Fuente de Oro", "Granada", "Guamal", "La Macarena", "Lejanías", "Mapiripán", "Mesetas", "La Uribe", "Puerto Concordia", "Puerto Gaitán",
+    "Puerto López", "Puerto Lleras", "Puerto Rico", "Restrepo", "San Carlos de Guaroa", "San Juan de Arama", "San Juanito", "San Martín", "Vista Hermosa"
+  ],
+  "Nariño": [
+    "Pasto", "Albán", "Aldana", "Ancuyá", "Arboleda", "Barbacoas", "Belén", "Buesaco", "Colón", "Consacá",
+    "Contadero", "Córdoba", "Cuaspud", "Cumbal", "Cumbitara", "Chachagüí", "El Charco", "El Peñol", "El Rosario", "El Tablón de Gómez",
+    "El Tambo", "Funes", "Guachucal", "Guaitarilla", "Gualmatán", "Iles", "Imués", "Ipiales", "La Cruz", "La Florida",
+    "La Llanada", "La Tola", "La Unión", "Leiva", "Linares", "Los Andes", "Magüí", "Mallama", "Mosquera", "Nariño",
+    "Olaya Herrera", "Ospina", "Francisco Pizarro", "Policarpa", "Puerres", "Pupiales", "Ricaurte", "Roberto Payán", "Samaniego", "Sandoná",
+    "San Bernardo", "San Lorenzo", "San Pablo", "San Pedro de Cartago", "Santa Bárbara", "Santacruz", "Sapuyes", "Taminango", "Tangua", "San Andrés de Tumaco",
+    "Túquerres", "Yacuanquer"
+  ],
+  "Norte de Santander": [
+    "Cúcuta", "Ábrego", "Arboledas", "Bochalema", "Bucarasica", "Cachirá", "Cácota", "Chinácota", "Chitagá", "Convención",
+    "Cúcutilla", "Durania", "El Carmen", "El Tarra", "El Zulia", "Gramalote", "Hacarí", "Herrán", "Labateca", "La Esperanza",
+    "La Playa", "Los Patios", "Lourdes", "Mutiscua", "Ocaña", "Pamplona", "Pamplonita", "Puerto Santander", "Ragonvalia", "Salazar",
+    "San Calixto", "San Cayetano", "Santiago", "Sardinata", "Silos", "Teorama", "Tibú", "Toledo", "Villa Caro", "Villa del Rosario"
+  ],
+  "Putumayo": ["Mocoa", "Colón", "Orito", "Puerto Asís", "Puerto Caicedo", "Puerto Guzmán", "Puerto Leguízamo", "Sibundoy", "San Francisco", "San Miguel", "Santiago", "Valle del Guamuez", "Villagarzón"],
+  "Quindío": ["Armenia", "Buenavista", "Calarcá", "Circasia", "Córdoba", "Filandia", "Génova", "La Tebaida", "Montenegro", "Pijao", "Quimbaya", "Salento"],
+  "Risaralda": ["Pereira", "Apía", "Balboa", "Belén de Umbría", "Dosquebradas", "Guática", "La Celia", "La Virginia", "Marsella", "Mistrató", "Pueblo Rico", "Quinchía", "Santa Rosa de Cabal", "Santuario"],
+  "San Andrés y Providencia": ["San Andrés", "Providencia"],
+  "Santander": [
+    "Bucaramanga", "Floridablanca", "Girón", "Piedecuesta", "Barrancabermeja", "Aguada", "Albania", "Aratoca", "Barbosa", "Barichara",
+    "Betulia", "Bolívar", "Cabrera", "California", "Capitanejo", "Carcasí", "Cepitá", "Cerrito", "Charalá", "Charta",
+    "Chima", "Chipatá", "Cimitarra", "Concepción", "Confines", "Contratación", "Coromoro", "Curití", "El Carmen de Chucurí", "El Guacamayo",
+    "El Peñón", "El Playón", "Encino", "Enciso", "Galán", "Gámbita", "Guaca", "Guadalupe", "Guapotá", "Guavatá",
+    "Güepsa", "Hato", "Jesús María", "Jordán", "Landázuri", "La Belleza", "La Paz", "Lebrija", "Los Santos", "Macaravita",
+    "Málaga", "Matanza", "Mogotes", "Molagavita", "Ocamonte", "Oiba", "Onzaga", "Palmar", "Palmas del Socorro", "Pinchote",
+    "Puente Nacional", "Puerto Parra", "Puerto Wilches", "Rionegro", "Sabana de Torres", "San Andrés", "San Benito", "San Gil", "San Joaquín", "San José de Miranda",
+    "San Miguel", "San Vicente de Chucurí", "Santa Bárbara", "Santa Helena del Opón", "Simacota", "Socorro", "Suaita", "Sucre", "Suratá", "Tona",
+    "Valle de San José", "Vélez", "Vetas", "Villanueva", "Zapatoca"
+  ],
+  "Sucre": [
+    "Sincelejo", "Buenavista", "Caimito", "Colosó", "Corozal", "Coveñas", "Chalán", "El Roble", "Galeras", "Guaranda",
+    "La Unión", "Los Palmitos", "Majagual", "Morroa", "Ovejas", "Palmito", "Sampués", "San Benito Abad", "San Juan de Betulia", "San Marcos",
+    "San Onofre", "San Pedro", "Sincé", "Sucre", "Tolú", "Tolú Viejo"
+  ],
+  "Tolima": [
+    "Ibagué", "Alpujarra", "Alvarado", "Ambalema", "Anzoátegui", "Armero Guayabal", "Ataco", "Cajamarca", "Carmen de Apicalá", "Casabianca",
+    "Chaparral", "Coello", "Coyaíma", "Cundai", "Dolores", "Espinal", "Falan", "Flandes", "Fresno", "Guamo",
+    "Herveo", "Honda", "Icononzo", "Lérida", "Líbano", "San Sebastián de Mariquita", "Melgar", "Murillo", "Natagaima", "Ortega",
+    "Palocabildo", "Piedras", "Planadas", "Prado", "Purificación", "Rioblanco", "Roncesvalles", "Rovira", "Saldaña", "San Antonio",
+    "San Luis", "Santa Isabel", "Suárez", "Valle de San Juan", "Venadillo", "Villahermosa", "Villarrica"
+  ],
+  "Valle del Cauca": [
+    "Cali", "Alcalá", "Andalucía", "Ansermanuevo", "Argelia", "Bolívar", "Buenaventura", "Guadalajara de Buga", "Bugalagrande", "Caicedonia",
+    "Calima", "Candelaria", "Cartago", "Dagua", "El Águila", "El Cairo", "El Cerrito", "El Dovio", "Florida", "Ginebra",
+    "Guacarí", "Jamundí", "La Cumbre", "La Unión", "La Victoria", "Obando", "Palmira", "Pradera", "Restrepo", "Riofrío",
+    "Roldanillo", "San Pedro", "Sevilla", "Toro", "Trujillo", "Tuluá", "Ulloa", "Versalles", "Vijes", "Yotoco",
+    "Yumbo", "Zarzal"
+  ],
+  "Vaupés": ["Mitú", "Carurú", "Pacoa", "Taraira", "Papunahua", "Yavaraté"],
+  "Vichada": ["Puerto Carreño", "La Primavera", "Santa Rosalía", "Cumaribo"]
+};
+
+const DEFAULT_EPS = [
+  "EPS Sura", "Sanitas EPS", "Compensar EPS", "Salud Total EPS", "Nueva EPS",
+  "Famisanar EPS", "Coosalud EPS", "Mutual Ser EPS", "EPS Servicio Occidental de Salud (SOS)", "Capital Salud EPS"
+];
+
+const DEFAULT_ARL = [
+  "Positiva Compañía de Seguros (ARL Positiva)", "ARL Sura", "AXA Colpatria ARL",
+  "Colmena Seguros ARL", "Seguros Bolívar ARL", "ARL Alfa", "Equidad Seguros ARL"
+];
+
+const DEFAULT_AFP = [
+  "Porvenir S.A.", "Protección S.A.", "Colfondos S.A.", "Skandia", "Colpensiones (Administradora Pública)"
+];
+
+const FALLBACK_ROLES = [
+  { id: "fallback-superadmin", name: "Super Admin", display_name: "Super Administrador" },
+  { id: "fallback-gerencia", name: "Gerencia", display_name: "Gerencia" },
+  { id: "fallback-administracion", name: "Administración", display_name: "Administración" },
+  { id: "fallback-supervisor", name: "Supervisor", display_name: "Supervisor" },
+  { id: "fallback-auditor", name: "Auditor", display_name: "Auditor" },
+  { id: "fallback-administrativo", name: "Administrativo", display_name: "Administrativo" },
+  { id: "fallback-medico", name: "Médico", display_name: "Médico" },
+  { id: "fallback-enfermero", name: "Enfermero", display_name: "Enfermero" },
+  { id: "fallback-cuidador", name: "Cuidador", display_name: "Cuidador" },
+];
 
 const emptyEmployee: Record<string, any> = {
   company_id: "",
@@ -16,111 +218,268 @@ const emptyEmployee: Record<string, any> = {
   document_type: "CC",
   document_number: "",
   first_name: "",
-  last_name: "",
   middle_name: "",
+  last_name: "",
+  second_last_name: "",
   email: "",
   phone: "",
   mobile: "",
   address: "",
-  city: "",
+  department_loc: "Quindío",
+  city: "Armenia",
   department_id: "",
   job_position_id: "",
   hire_date: "",
-  eps: "",
-  arl: "",
-  afp: "",
+  eps: "EPS Sura",
+  arl: "Positiva Compañía de Seguros (ARL Positiva)",
+  afp: "Porvenir S.A.",
   status: "active",
-  create_access: false,
   username: "",
   password: "",
   role_id: "",
   platform_access: "both",
 };
 
-function EmployeeForm({ data, onChange, roles, editing }: { data: any; onChange: (d: any) => void; roles?: any[]; editing?: any }) {
+function EmployeeForm({
+  data, onChange, roles, catalogs, editing
+}: {
+  data: any; onChange: (d: any) => void; roles?: any[]; catalogs?: any; editing?: any;
+}) {
   const set = (k: string, v: any) => onChange({ ...data, [k]: v });
-  const field = (label: string, key: string, opts?: { type?: string; required?: boolean; half?: boolean }) => (
+
+  // Full name calculation
+  const fullName = [data.first_name, data.middle_name, data.last_name, data.second_last_name]
+    .filter(Boolean)
+    .join(" ");
+
+  const departmentsList = catalogs?.departments?.length ? catalogs.departments.map((d: any) => d.name || d) : DEFAULT_DEPARTMENTS;
+  const epsList = catalogs?.eps?.length ? catalogs.eps.map((e: any) => e.name || e) : DEFAULT_EPS;
+  const arlList = catalogs?.arl?.length ? catalogs.arl.map((a: any) => a.name || a) : DEFAULT_ARL;
+  const afpList = catalogs?.afp?.length ? catalogs.afp.map((a: any) => a.name || a) : DEFAULT_AFP;
+
+  // Filter municipalities by selected department
+  const selectedDept = data.department_loc || "Quindío";
+  const availableCities = COLOMBIAN_CITIES_BY_DEPT[selectedDept] || (
+    catalogs?.cities?.length
+      ? catalogs.cities.filter((c: any) => !c.department || c.department === selectedDept).map((c: any) => c.name || c)
+      : ["Armenia"]
+  );
+
+  const field = (label: string, key: string, opts?: { type?: string; required?: boolean; half?: boolean; placeholder?: string }) => (
     <div className={opts?.half ? "flex-1" : "w-full"}>
-      <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+      <label className="block text-xs font-medium text-gray-500 mb-1">{label} {opts?.required && <span className="text-red-500">*</span>}</label>
       <Input
         type={opts?.type || "text"}
         value={data[key] || ""}
         onChange={(e) => set(key, e.target.value)}
         required={opts?.required}
+        placeholder={opts?.placeholder || ""}
         className="h-9 text-sm"
       />
     </div>
   );
+
   return (
-    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+    <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+      {/* Datos del documento */}
       <div>
         <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Datos del documento</h4>
         <div className="flex gap-3">
-          <div className="w-28">
-            <label className="block text-xs font-medium text-gray-500 mb-1">Tipo</label>
-            <Select value={data.document_type} onValueChange={(v) => set("document_type", v)}>
-              <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CC">Cédula</SelectItem>
-                <SelectItem value="TI">Tarjeta Identidad</SelectItem>
-                <SelectItem value="CE">Cédula Extranjería</SelectItem>
-                <SelectItem value="PA">Pasaporte</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="w-36">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Tipo de Doc <span className="text-red-500">*</span></label>
+            <select
+              className="flex h-9 w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+              value={data.document_type || "CC"}
+              onChange={(e) => set("document_type", e.target.value)}
+            >
+              <option value="CC">Cédula Ciudadanía</option>
+              <option value="TI">Tarjeta Identidad</option>
+              <option value="CE">Cédula Extranjería</option>
+              <option value="PA">Pasaporte</option>
+              <option value="NIT">NIT</option>
+            </select>
           </div>
-          {field("Número", "document_number", { required: true })}
-          {field("Código", "code", { required: true })}
+          {field("Número de documento", "document_number", { required: true, placeholder: "Ej: 1234567890" })}
+          {field("Código empleado", "code", { required: true, placeholder: "Ej: EMP-001" })}
         </div>
       </div>
+
+      {/* Nombres y Apellidos */}
       <div>
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Información personal</h4>
-        <div className="flex gap-3 mb-3">
-          {field("Nombres", "first_name", { required: true, half: true })}
-          {field("Apellidos", "last_name", { required: true, half: true })}
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Nombres y Apellidos</h4>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          {field("Primer nombre", "first_name", { required: true, placeholder: "Ej: Juan" })}
+          {field("Segundo nombre", "middle_name", { placeholder: "Ej: Carlos" })}
         </div>
-        <div className="flex gap-3 mb-3">
-          {field("2do Nombre", "middle_name", { half: true })}
-          {field("Email", "email", { half: true, type: "email" })}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          {field("Primer apellido", "last_name", { required: true, placeholder: "Ej: Pérez" })}
+          {field("Segundo apellido", "second_last_name", { placeholder: "Ej: López" })}
         </div>
-        <div className="flex gap-3">
-          {field("Teléfono", "phone", { half: true })}
-          {field("Ciudad", "city", { half: true })}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+          <label className="block text-xs font-medium text-blue-600 mb-1">Nombre completo (Vista Previa)</label>
+          <p className="text-sm font-semibold text-blue-900">{fullName || "—"}</p>
+        </div>
+
+        {/* Foto de Perfil / Referencial Biometría Facial App Móvil */}
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+            Foto Referencial Biometría Facial (App Móvil)
+          </label>
+          <div className="flex items-center gap-4">
+            <div className="relative h-16 w-16 rounded-full overflow-hidden border-2 border-blue-500 bg-slate-200 flex-shrink-0 flex items-center justify-center shadow-sm">
+              {data.photo_url ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={data.photo_url} alt="Foto Referencial Empleado" className="h-full w-full object-cover" />
+              ) : (
+                <span className="text-xs font-bold text-slate-400 uppercase">Sin foto</span>
+              )}
+            </div>
+            <div className="flex-1 space-y-1.5">
+              <label className="block text-[11px] font-medium text-slate-600">Subir imagen desde equipo o pegar URL direct de la foto</label>
+              <input
+                type="file"
+                accept="image/*"
+                className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      set("photo_url", reader.result as string);
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+              <Input
+                type="text"
+                placeholder="O pegar URL directa https://..."
+                value={data.photo_url || ""}
+                onChange={(e) => set("photo_url", e.target.value)}
+                className="h-8 text-xs font-mono bg-white"
+              />
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Ubicación y Contacto con Selector de Departamento y Ciudad */}
       <div>
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Información laboral</h4>
-        <div className="flex gap-3 mb-3">
-          {field("Fecha ingreso", "hire_date", { type: "date", half: true })}
-          <div className="flex-1">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Ubicación y Contacto</h4>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Departamento</label>
+            <select
+              className="flex h-9 w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+              value={data.department_loc || "Quindío"}
+              onChange={(e) => {
+                const newDept = e.target.value;
+                set("department_loc", newDept);
+                const firstCity = COLOMBIAN_CITIES_BY_DEPT[newDept]?.[0] || "";
+                set("city", firstCity);
+              }}
+            >
+              {departmentsList.map((dep: string) => (
+                <option key={dep} value={dep}>{dep}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Ciudad / Municipio</label>
+            <select
+              className="flex h-9 w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+              value={data.city || ""}
+              onChange={(e) => set("city", e.target.value)}
+            >
+              {availableCities.map((city: string) => (
+                <option key={city} value={city}>{city}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {field("Email", "email", { type: "email", placeholder: "correo@ejemplo.com" })}
+          {field("Celular / WhatsApp", "mobile", { placeholder: "+57 300 000 0000" })}
+        </div>
+      </div>
+
+      {/* Información Laboral & Seguridad Social */}
+      <div>
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Información Laboral & Seguridad Social</h4>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          {field("Fecha de ingreso", "hire_date", { type: "date" })}
+          <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Estado</label>
-            <Select value={data.status} onValueChange={(v) => set("status", v)}>
-              <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Activo</SelectItem>
-                <SelectItem value="inactive">Inactivo</SelectItem>
-                <SelectItem value="terminated">Retirado</SelectItem>
-                <SelectItem value="suspended">Suspendido</SelectItem>
-              </SelectContent>
-            </Select>
+            <select
+              className="flex h-9 w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+              value={data.status || "active"}
+              onChange={(e) => set("status", e.target.value)}
+            >
+              <option value="active">Activo</option>
+              <option value="inactive">Inactivo</option>
+              <option value="terminated">Retirado</option>
+              <option value="suspended">Suspendido</option>
+            </select>
           </div>
         </div>
-        <div className="flex gap-3">
-          {field("EPS", "eps", { half: true })}
-          {field("ARL", "arl", { half: true })}
+
+        {/* EPS, ARL, AFP Dropdowns */}
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">EPS (Salud)</label>
+            <select
+              className="flex h-9 w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+              value={data.eps || ""}
+              onChange={(e) => set("eps", e.target.value)}
+            >
+              <option value="">Seleccione EPS...</option>
+              {epsList.map((e: string) => (
+                <option key={e} value={e}>{e}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">ARL (Riesgos)</label>
+            <select
+              className="flex h-9 w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+              value={data.arl || ""}
+              onChange={(e) => set("arl", e.target.value)}
+            >
+              <option value="">Seleccione ARL...</option>
+              {arlList.map((a: string) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">AFP (Pensión)</label>
+            <select
+              className="flex h-9 w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+              value={data.afp || ""}
+              onChange={(e) => set("afp", e.target.value)}
+            >
+              <option value="">Seleccione AFP...</option>
+              {afpList.map((f: string) => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
+
+      {/* Acceso al Sistema */}
       <div className="border-t pt-4">
         <div className="flex items-center justify-between mb-3">
-          <h4 className="text-sm font-semibold">Acceso al Sistema</h4>
+          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Acceso al Sistema</h4>
           {editing && editing.has_access && (
             <Badge variant="default" className="text-xs">
               Cuenta activa - {editing.username}
             </Badge>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Usuario {!editing && "*"}</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Usuario {!editing && <span className="text-red-500">*</span>}</label>
             <Input
               placeholder="nombre.usuario"
               value={data.username || ""}
@@ -130,7 +489,7 @@ function EmployeeForm({ data, onChange, roles, editing }: { data: any; onChange:
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">
-              {editing && editing.has_access ? "Nueva Contraseña (vacío = mantener)" : "Contraseña *"}
+              {editing && editing.has_access ? "Nueva contraseña (vacío = mantener)" : "Contraseña *"}
             </label>
             <Input
               type="password"
@@ -140,10 +499,12 @@ function EmployeeForm({ data, onChange, roles, editing }: { data: any; onChange:
               className="h-9 text-sm"
             />
           </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Rol / Perfil</label>
             <select
-              className="flex h-9 w-full rounded-md border bg-background px-3 py-2 text-sm"
+              className="flex h-9 w-full rounded-md border bg-background px-3 py-1.5 text-sm"
               value={data.role_id || ""}
               onChange={(e) => set("role_id", e.target.value)}
             >
@@ -152,15 +513,16 @@ function EmployeeForm({ data, onChange, roles, editing }: { data: any; onChange:
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Acceso a Plataforma</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Acceso a plataforma</label>
             <select
-              className="flex h-9 w-full rounded-md border bg-background px-3 py-2 text-sm"
+              className="flex h-9 w-full rounded-md border bg-background px-3 py-1.5 text-sm"
               value={data.platform_access || "both"}
               onChange={(e) => set("platform_access", e.target.value)}
             >
-              <option value="both">Web y App</option>
+              <option value="both">Web y App Móvil</option>
               <option value="web">Solo Web (ERP)</option>
               <option value="mobile">Solo App Móvil</option>
+              <option value="none">Sin acceso</option>
             </select>
           </div>
         </div>
@@ -185,9 +547,84 @@ export default function EmployeesPage() {
   const [viewData, setViewData] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [roles, setRoles] = useState<any[]>([]);
+  const [catalogs, setCatalogs] = useState<any>({
+    departments: DEFAULT_DEPARTMENTS,
+    cities: [],
+    eps: DEFAULT_EPS,
+    arl: DEFAULT_ARL,
+    afp: DEFAULT_AFP,
+  });
   const [existingAccess, setExistingAccess] = useState(false);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const companyId = typeof window !== "undefined" ? localStorage.getItem("company_id") || "" : "";
+  // Bulk Import State
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importRows, setImportRows] = useState<any[]>([]);
+  const [importFileName, setImportFileName] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<any | null>(null);
+
+  const showToast = (type: "success" | "error", message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const companyId = (typeof window !== "undefined" ? localStorage.getItem("company_id") : null) || "dla-company-main";
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFileName(file.name);
+    setImportResult(null);
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      const lines = text.split(/\r\n|\n/).filter((l) => l.trim().length > 0);
+      if (lines.length < 2) {
+        showToast("error", "El archivo CSV debe contener al menos la fila de encabezados y una fila de datos");
+        return;
+      }
+      const headers = lines[0].split(",").map((h) => h.trim().replace(/^["']|["']$/g, ""));
+      const parsed: any[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(",").map((c) => c.trim().replace(/^["']|["']$/g, ""));
+        if (cols.length < 2) continue;
+        const obj: any = {};
+        for (let j = 0; j < headers.length; j++) {
+          obj[headers[j]] = cols[j] || "";
+        }
+        parsed.push(obj);
+      }
+      setImportRows(parsed);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleConfirmImport = async () => {
+    if (importRows.length === 0) return;
+    setImporting(true);
+    try {
+      const res = await api.post("/employees/import", {
+        company_id: companyId,
+        employees: importRows,
+      });
+      setImportResult(res.data);
+      showToast("success", `Importación completada: ${res.data.created_count} creados, ${res.data.skipped_count} omitidos.`);
+      loadEmployees();
+      loadStats();
+    } catch (err: any) {
+      showToast("error", err?.response?.data?.detail || "Error en la importación masiva");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleDownloadEmployeesTemplate = () => {
+    if (typeof window !== "undefined") {
+      window.open("/api/v1/employees/template", "_blank");
+    }
+  };
 
   const loadEmployees = useCallback(async () => {
     setLoading(true);
@@ -211,11 +648,42 @@ export default function EmployeesPage() {
   const loadRoles = useCallback(async () => {
     try {
       const res = await api.get(`/iam/roles`);
-      setRoles(res.data.items || res.data || []);
+      const items = res.data.items || res.data || [];
+      if (items.length > 0) {
+        setRoles(items);
+      } else {
+        setRoles(FALLBACK_ROLES);
+      }
+    } catch {
+      setRoles(FALLBACK_ROLES);
+    }
+  }, []);
+
+  const loadCatalogs = useCallback(async () => {
+    try {
+      const [depRes, cityRes, epsRes, arlRes, afpRes] = await Promise.allSettled([
+        api.get("/catalogs/departments"),
+        api.get("/catalogs/cities"),
+        api.get("/catalogs/eps"),
+        api.get("/catalogs/arl"),
+        api.get("/catalogs/afp"),
+      ]);
+      setCatalogs({
+        departments: depRes.status === "fulfilled" ? depRes.value.data : DEFAULT_DEPARTMENTS,
+        cities: cityRes.status === "fulfilled" ? cityRes.value.data : [],
+        eps: epsRes.status === "fulfilled" ? epsRes.value.data : DEFAULT_EPS,
+        arl: arlRes.status === "fulfilled" ? arlRes.value.data : DEFAULT_ARL,
+        afp: afpRes.status === "fulfilled" ? afpRes.value.data : DEFAULT_AFP,
+      });
     } catch {}
   }, []);
 
-  useEffect(() => { loadEmployees(); loadStats(); loadRoles(); }, [loadEmployees, loadStats, loadRoles]);
+  useEffect(() => {
+    loadEmployees();
+    loadStats();
+    loadRoles();
+    loadCatalogs();
+  }, [loadEmployees, loadStats, loadRoles, loadCatalogs]);
 
   const openCreate = () => {
     setEditMode(false);
@@ -239,25 +707,27 @@ export default function EmployeesPage() {
         document_type: d.document_type || "CC",
         document_number: d.document_number || "",
         first_name: d.first_name || "",
-        last_name: d.last_name || "",
         middle_name: d.middle_name || "",
+        last_name: d.last_name || "",
+        second_last_name: d.second_last_name || "",
         email: d.email || "",
         phone: d.phone || "",
         mobile: d.mobile || "",
         address: d.address || "",
-        city: d.city || "",
+        department_loc: d.department_loc || "Quindío",
+        city: d.city || "Armenia",
         department_id: d.department_id || "",
         job_position_id: d.job_position_id || "",
         hire_date: d.hire_date || "",
-        eps: d.eps || "",
-        arl: d.arl || "",
-        afp: d.afp || "",
+        eps: d.eps || "EPS Sura",
+        arl: d.arl || "Positiva Compañía de Seguros (ARL Positiva)",
+        afp: d.afp || "Porvenir S.A.",
         status: d.status || "active",
-        create_access: d.has_access || false,
         username: d.username || "",
         password: "",
         role_id: d.role_id || "",
         platform_access: d.platform_access || "both",
+        photo_url: d.photo_url || "",
       });
     } catch {
       setFormData({ ...emptyEmployee, company_id: companyId });
@@ -275,42 +745,83 @@ export default function EmployeesPage() {
 
   const handleSave = async () => {
     if (!formData.first_name || !formData.last_name || !formData.document_number || !formData.code) {
-      setError("Nombre, apellido, documento y código son obligatorios");
+      setError("Primer nombre, primer apellido, número de documento y código son obligatorios");
       return;
     }
+
     setSaving(true);
     setError("");
+
+    // Clean role_id: ignore synthetic fallback role IDs
+    const targetRoleId = formData.role_id && !formData.role_id.startsWith("fallback-") ? formData.role_id : null;
+
     try {
       if (editMode && editId) {
-        const { create_access, username, password, role_id, platform_access, ...empData } = formData;
+        const { username, password, role_id, platform_access, ...empData } = formData;
         await api.put(`/employees/${editId}`, empData);
         if (existingAccess) {
-          if (formData.username || formData.password || formData.role_id || formData.platform_access !== "both") {
+          if (username || password || targetRoleId || platform_access !== "both") {
             await api.put(`/employees/${editId}/access`, {
-              ...(formData.username ? { username: formData.username } : {}),
-              ...(formData.password ? { password: formData.password } : {}),
-              ...(formData.role_id ? { role_id: formData.role_id } : {}),
-              platform_access: formData.platform_access || "both",
+              ...(username ? { username } : {}),
+              ...(password ? { password } : {}),
+              role_id: targetRoleId,
+              platform_access: platform_access || "both",
             });
           }
-        } else if (formData.username && formData.password) {
+        } else if (username && password) {
           await api.post(`/employees/${editId}/access`, {
-            username: formData.username,
-            password: formData.password,
-            role_id: formData.role_id || null,
-            platform_access: formData.platform_access || "both",
+            username, password,
+            role_id: targetRoleId,
+            platform_access: platform_access || "both",
           });
         }
+        showToast("success", "Empleado actualizado correctamente");
       } else {
-        const { create_access, ...payload } = formData;
-        payload.company_id = companyId;
-        await api.post(`/employees`, payload);
+        const { username, password, role_id, platform_access, ...empData } = formData;
+        
+        let currentCompany = companyId || empData.company_id || (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
+        if (!currentCompany || currentCompany === "") {
+          try {
+            const meRes = await api.get("/auth/me");
+            currentCompany = meRes.data?.company_id || "dla-company-main";
+          } catch {
+            currentCompany = "dla-company-main";
+          }
+        }
+        empData.company_id = currentCompany || "dla-company-main";
+
+        const res = await api.post(`/employees`, empData);
+        const newId = res.data.id;
+
+        if (newId && username && password) {
+          try {
+            await api.post(`/employees/${newId}/access`, {
+              username, password,
+              role_id: targetRoleId,
+              platform_access: platform_access || "both",
+            });
+          } catch (accessErr: any) {
+            showToast("error", `Empleado creado pero error al crear acceso: ${accessErr?.response?.data?.detail || "Error al crear usuario"}`);
+          }
+        }
+        showToast("success", `Empleado "${formData.first_name} ${formData.last_name}" creado correctamente`);
+        if (res.data && res.data.id) {
+          setEmployees((prev) => [res.data, ...prev.filter((e) => e.id !== res.data.id)]);
+          setTotal((prev) => prev + 1);
+        }
       }
       setDialogOpen(false);
-      loadEmployees();
-      loadStats();
+      await loadEmployees();
+      await loadStats();
     } catch (e: any) {
-      setError(e?.response?.data?.detail || "Error al guardar");
+      const detail = e?.response?.data?.detail;
+      if (typeof detail === "string") {
+        setError(detail);
+      } else if (Array.isArray(detail)) {
+        setError(detail.map((d: any) => d.msg || JSON.stringify(d)).join(", "));
+      } else {
+        setError("Error al guardar. Verifique los datos ingresados.");
+      }
     }
     setSaving(false);
   };
@@ -320,19 +831,40 @@ export default function EmployeesPage() {
     try {
       await api.delete(`/employees/${deleteId}`);
       setDeleteId(null);
+      showToast("success", "Empleado eliminado correctamente");
       loadEmployees();
       loadStats();
-    } catch {}
+    } catch (e: any) {
+      showToast("error", e?.response?.data?.detail || "Error al eliminar empleado");
+    }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Empleados</h1>
-          <p className="text-muted-foreground">{total} registros</p>
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-white text-sm max-w-md ${toast.type === "success" ? "bg-green-600" : "bg-red-600"}`}>
+          {toast.type === "success" ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 flex-shrink-0" />}
+          {toast.message}
         </div>
-        <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Nuevo Empleado</Button>
+      )}
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Gestión de Empleados</h1>
+          <p className="text-xs text-muted-foreground">Catálogo de personal, vinculaciones laborales y biometría ({total} registros)</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" onClick={handleDownloadEmployeesTemplate} className="gap-1.5 text-xs font-semibold">
+            <Download className="h-4 w-4 text-blue-600" /> Plantilla CSV
+          </Button>
+          <Button variant="outline" onClick={() => { setImportModalOpen(true); setImportRows([]); setImportResult(null); setImportFileName(""); }} className="gap-1.5 text-xs font-semibold">
+            <Upload className="h-4 w-4 text-cyan-600" /> Carga Masiva
+          </Button>
+          <Button onClick={openCreate} className="gap-1 text-xs font-bold">
+            <Plus className="h-4 w-4" /> Nuevo Empleado
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -364,10 +896,10 @@ export default function EmployeesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Código</TableHead>
-                <TableHead>Nombre</TableHead>
+                <TableHead>Nombre completo</TableHead>
                 <TableHead>Documento</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Teléfono</TableHead>
+                <TableHead>Ubicación</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Usuario</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
@@ -384,18 +916,18 @@ export default function EmployeesPage() {
                     <TableCell className="font-mono text-sm">{emp.code}</TableCell>
                     <TableCell className="font-medium">{emp.first_name} {emp.last_name}</TableCell>
                     <TableCell>{emp.document_type} {emp.document_number}</TableCell>
-                    <TableCell className="text-muted-foreground">{emp.email || "-"}</TableCell>
-                    <TableCell>{emp.phone || "-"}</TableCell>
+                    <TableCell className="text-muted-foreground">{emp.email || "—"}</TableCell>
+                    <TableCell className="text-xs">{emp.city || "Armenia"} ({emp.department_loc || "Quindío"})</TableCell>
                     <TableCell>
                       <Badge variant={emp.status === "active" ? "default" : emp.status === "terminated" ? "destructive" : "secondary"}>
-                        {emp.status === "active" ? "Activo" : emp.status === "terminated" ? "Retirado" : emp.status}
+                        {emp.status === "active" ? "Activo" : emp.status === "terminated" ? "Retirado" : emp.status === "inactive" ? "Inactivo" : emp.status}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       {emp.username ? (
                         <Badge variant="default" className="text-[10px]">
                           {emp.username}
-                          {emp.platform_access === "both" ? " (Web+App)" : emp.platform_access === "web" ? " (Web)" : " (App)"}
+                          {emp.platform_access === "both" ? " (Web+App)" : emp.platform_access === "web" ? " (Web)" : emp.platform_access === "mobile" ? " (App)" : ""}
                         </Badge>
                       ) : (
                         <span className="text-xs text-muted-foreground">Sin acceso</span>
@@ -414,13 +946,25 @@ export default function EmployeesPage() {
         </CardContent>
       </Card>
 
+      {/* Diálogo Crear/Editar */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editMode ? "Editar Empleado" : "Nuevo Empleado"}</DialogTitle>
           </DialogHeader>
-          {error && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{error}</div>}
-          <EmployeeForm data={formData} onChange={setFormData} roles={roles} editing={editMode ? formData : null} />
+          {error && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              {error}
+            </div>
+          )}
+          <EmployeeForm
+            data={formData}
+            onChange={setFormData}
+            roles={roles}
+            catalogs={catalogs}
+            editing={editMode ? { ...formData, has_access: existingAccess } : null}
+          />
           <DialogFooter>
             <DialogClose asChild><Button variant="outline" size="sm">Cancelar</Button></DialogClose>
             <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
@@ -428,6 +972,7 @@ export default function EmployeesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Diálogo Eliminar */}
       <Dialog open={!!deleteId} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Eliminar Empleado</DialogTitle></DialogHeader>
@@ -439,27 +984,32 @@ export default function EmployeesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Diálogo Ver Detalle */}
       <Dialog open={viewOpen} onOpenChange={setViewOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Detalle del Empleado</DialogTitle></DialogHeader>
           {viewData && (
-            <div className="space-y-3 text-sm">
+            <div className="space-y-4 text-sm">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-blue-900">
+                  {viewData.first_name} {viewData.middle_name || ""} {viewData.last_name} {viewData.second_last_name || ""}
+                </p>
+                <p className="text-xs text-blue-600">{viewData.code}</p>
+              </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><span className="text-muted-foreground">Código:</span> <span className="font-medium">{viewData.code}</span></div>
-                <div><span className="text-muted-foreground">Estado:</span> <Badge variant={viewData.status === "active" ? "default" : "secondary"}>{viewData.status}</Badge></div>
-                <div><span className="text-muted-foreground">Nombre:</span> <span className="font-medium">{viewData.first_name} {viewData.middle_name || ""} {viewData.last_name}</span></div>
+                <div><span className="text-muted-foreground">Estado:</span> <Badge variant={viewData.status === "active" ? "default" : "secondary"}>{viewData.status === "active" ? "Activo" : viewData.status}</Badge></div>
                 <div><span className="text-muted-foreground">Documento:</span> {viewData.document_type} {viewData.document_number}</div>
-                <div><span className="text-muted-foreground">Email:</span> {viewData.email || "-"}</div>
-                <div><span className="text-muted-foreground">Teléfono:</span> {viewData.phone || "-"}</div>
-                <div><span className="text-muted-foreground">Ciudad:</span> {viewData.city || "-"}</div>
-                <div><span className="text-muted-foreground">Fecha ingreso:</span> {viewData.hire_date || "-"}</div>
-                <div><span className="text-muted-foreground">EPS:</span> {viewData.eps || "-"}</div>
-                <div><span className="text-muted-foreground">ARL:</span> {viewData.arl || "-"}</div>
-                <div><span className="text-muted-foreground">AFP:</span> {viewData.afp || "-"}</div>
+                <div><span className="text-muted-foreground">Departamento:</span> {viewData.department_loc || "Quindío"}</div>
+                <div><span className="text-muted-foreground">Ciudad:</span> {viewData.city || "Armenia"}</div>
+                <div><span className="text-muted-foreground">Email:</span> {viewData.email || "—"}</div>
+                <div><span className="text-muted-foreground">Celular:</span> {viewData.mobile || "—"}</div>
+                <div><span className="text-muted-foreground">EPS:</span> {viewData.eps || "—"}</div>
+                <div><span className="text-muted-foreground">ARL:</span> {viewData.arl || "—"}</div>
+                <div><span className="text-muted-foreground">AFP:</span> {viewData.afp || "—"}</div>
                 <div>
                   <span className="text-muted-foreground">Usuario:</span>{" "}
                   {viewData.has_access ? (
-                    <Badge variant="default" className="text-xs">{viewData.username} ({viewData.platform_access})</Badge>
+                    <Badge variant="default" className="text-xs">{viewData.username} ({viewData.platform_access === "both" ? "Web+App" : viewData.platform_access})</Badge>
                   ) : (
                     <span className="text-xs text-muted-foreground">Sin acceso</span>
                   )}
@@ -469,6 +1019,112 @@ export default function EmployeesPage() {
           )}
           <DialogFooter>
             <DialogClose asChild><Button variant="outline" size="sm">Cerrar</Button></DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL DE CARGA MASIVA DE EMPLEADOS */}
+      <Dialog open={importModalOpen} onOpenChange={setImportModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <Upload className="h-5 w-5 text-blue-600" /> Carga Masiva de Empleados (CSV / Excel)
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            <div className="p-4 border-2 border-dashed rounded-xl bg-slate-50 text-center space-y-2">
+              <FileText className="h-8 w-8 text-slate-400 mx-auto" />
+              <p className="font-semibold text-slate-700">Selecciona el archivo CSV con la lista de empleados</p>
+              <p className="text-[11px] text-slate-500">Asegúrate de usar la plantilla oficial con encabezados compatibles.</p>
+
+              <div className="pt-2 flex justify-center gap-2 flex-wrap">
+                <Button variant="outline" size="sm" onClick={handleDownloadEmployeesTemplate} className="gap-1 text-xs">
+                  <Download className="h-3.5 w-3.5" /> Descargar Plantilla CSV
+                </Button>
+
+                <label className="cursor-pointer">
+                  <span className="inline-flex items-center justify-center px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs gap-1 shadow">
+                    <Upload className="h-3.5 w-3.5" /> Seleccionar Archivo CSV
+                  </span>
+                  <input type="file" accept=".csv,text/csv" onChange={handleFileUpload} className="hidden" />
+                </label>
+              </div>
+
+              {importFileName && (
+                <p className="text-xs font-mono font-bold text-blue-600 pt-1">Archivo cargado: {importFileName} ({importRows.length} filas detectadas)</p>
+              )}
+            </div>
+
+            {/* Preview Table */}
+            {importRows.length > 0 && !importResult && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-slate-800">Vista Previa ({importRows.length} Registros)</p>
+                  <span className="text-[11px] text-slate-500">Primeras filas a procesar</span>
+                </div>
+                <div className="max-h-48 overflow-y-auto border rounded-lg text-[11px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-slate-100">
+                        <TableHead>Cédula</TableHead>
+                        <TableHead>Nombre</TableHead>
+                        <TableHead>Apellido</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Cargo</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importRows.slice(0, 5).map((row, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="font-mono">{row.document_number || row.cedula}</TableCell>
+                          <TableCell>{row.first_name || row.nombre}</TableCell>
+                          <TableCell>{row.last_name || row.apellido}</TableCell>
+                          <TableCell>{row.email}</TableCell>
+                          <TableCell>{row.job_position || row.cargo}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
+            {/* Results Report */}
+            {importResult && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-2">
+                <p className="font-bold text-blue-900 text-sm flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" /> Resultado de Importación Masiva
+                </p>
+                <div className="grid grid-cols-3 gap-2 text-center text-xs pt-1">
+                  <div className="p-2 bg-white rounded border"><p className="text-lg font-bold text-green-600">{importResult.created_count}</p><p className="text-[10px] text-slate-500">Creados Exitosamente</p></div>
+                  <div className="p-2 bg-white rounded border"><p className="text-lg font-bold text-amber-600">{importResult.skipped_count}</p><p className="text-[10px] text-slate-500">Omitidos / Duplicados</p></div>
+                  <div className="p-2 bg-white rounded border"><p className="text-lg font-bold text-slate-800">{importResult.total_processed}</p><p className="text-[10px] text-slate-500">Total Procesados</p></div>
+                </div>
+
+                {importResult.errors && importResult.errors.length > 0 && (
+                  <div className="pt-2">
+                    <p className="font-semibold text-slate-700 text-[11px]">Detalle de observaciones:</p>
+                    <ul className="max-h-24 overflow-y-auto text-[10px] text-red-700 bg-white p-2 rounded border space-y-0.5 font-mono">
+                      {importResult.errors.map((err: string, i: number) => (
+                        <li key={i}>• {err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setImportModalOpen(false)}>
+              Cerrar
+            </Button>
+            {importRows.length > 0 && !importResult && (
+              <Button onClick={handleConfirmImport} disabled={importing} className="bg-blue-600 hover:bg-blue-700 text-white font-bold">
+                {importing ? "Importando Registros..." : `Confirmar Importación (${importRows.length} Empleados)`}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

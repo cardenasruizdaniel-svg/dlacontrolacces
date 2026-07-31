@@ -49,6 +49,7 @@ class Contract(BaseModel):
     max_hours_per_day: Mapped[float | None] = mapped_column(Float, nullable=True)
     contracted_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
     shift_value: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    daily_rate: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
     shift_duration_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
     shifts_per_period: Mapped[int | None] = mapped_column(Integer, nullable=True)
     transportation_assistance: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -79,6 +80,15 @@ class Contract(BaseModel):
     # Renovaciones
     renewal_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_renewable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Documentos del contrato / empleado (Certificados, Cédula, Exámenes, etc.)
+    documents_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Firma digital del contrato
+    signature_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_signed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    signed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signature_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Notas
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

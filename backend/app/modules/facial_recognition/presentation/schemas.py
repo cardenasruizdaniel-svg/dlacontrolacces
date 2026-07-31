@@ -7,6 +7,7 @@ class FaceRegisterRequest(BaseModel):
 
 
 class FaceVerifyRequest(BaseModel):
+    employee_id: str
     photo_base64: str
 
 

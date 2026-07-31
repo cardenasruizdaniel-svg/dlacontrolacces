@@ -139,7 +139,8 @@ async def update_template(template_id: str, body: ShiftTemplateUpdateRequest, db
 
 @router.delete("/templates/{template_id}")
 async def delete_template(template_id: str, db: DbSession, current_user = Depends(require_permission("scheduling", "delete"))) -> dict:
-    await get_service(db).delete_template(template_id)
+    await get_service(db).delete_template(template_id, db=db)
+    await db.commit()
     return {"message": "Template deleted"}
 
 
@@ -154,7 +155,7 @@ async def create_schedule(body: ScheduleCreateRequest, db: DbSession, current_us
 @router.get("/schedules", response_model=ScheduleListResponse)
 async def list_schedules(
     company_id: str, current_user: CurrentUser, db: DbSession,
-    page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100),
+    page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=1000),
 ) -> ScheduleListResponse:
     result = await get_service(db).list_schedules(company_id, page=page, page_size=page_size)
     items = []
@@ -350,7 +351,7 @@ async def create_series(body: SeriesCreateRequest, db: DbSession, current_user =
 @router.get("/series", response_model=SeriesListResponse)
 async def list_series(
     company_id: str, current_user: CurrentUser, db: DbSession,
-    page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100),
+    page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=1000),
 ) -> SeriesListResponse:
     result = await get_service(db).list_series(company_id, page=page, page_size=page_size)
     items = [_series_to_response(s) for s in result["items"]]

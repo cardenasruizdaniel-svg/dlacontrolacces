@@ -9,7 +9,7 @@ export default function GeolocationPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Geolocalizaci\u00f3n</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Geolocalización</h1>
           <p className="text-muted-foreground">Mapa en tiempo real, geocercas y rastreo de personal</p>
         </div>
         <Button><Target className="mr-2 h-4 w-4" />Nueva Geocerca</Button>
@@ -38,8 +38,8 @@ export default function GeolocationPage() {
           <div className="relative h-[500px] bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden flex items-center justify-center">
             <div className="text-center text-muted-foreground">
               <MapPin className="h-16 w-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">Mapa de Geolocalizaci\u00f3n</p>
-              <p className="text-sm">Google Maps / OpenStreetMap se cargar\u00e1 aqu\u00ed</p>
+              <p className="text-lg font-medium">Mapa de Geolocalización</p>
+              <p className="text-sm">Google Maps / OpenStreetMap se cargará aquí</p>
               <p className="text-xs mt-2">Configure GOOGLE_MAPS_API_KEY para habilitar</p>
             </div>
           </div>

@@ -1,15 +1,14 @@
 {
-  "name": "DLA Access Enterprise",
-  "short_name": "DLA Access",
-  "description": "ERP Enterprise - Control de Acceso, Geolocalización y Gestión de Personal",
-  "start_url": "/login",
+  "name": "DLA Access Enterprise PWA",
+  "short_name": "DLA Access Mobile",
+  "description": "Plataforma Enterprise de Control de Acceso, Asistencia, Nomina y Gestión de Campo por DLA Redes y Seguridad",
+  "start_url": "/mobile",
   "display": "standalone",
-  "orientation": "any",
+  "orientation": "portrait-primary",
   "background_color": "#0f172a",
-  "theme_color": "#1a56db",
-  "categories": ["business", "productivity", "security"],
+  "theme_color": "#1e293b",
   "lang": "es-CO",
-  "scope": "/",
+  "categories": ["business", "productivity", "utilities"],
   "icons": [
     {
       "src": "/icons/icon-192.svg",
@@ -24,21 +23,20 @@
       "purpose": "any maskable"
     }
   ],
-  "screenshots": [],
-  "prefer_related_applications": false,
-  "related_applications": [],
   "shortcuts": [
     {
-      "name": "Dashboard",
-      "short_name": "Inicio",
-      "description": "Ver dashboard principal",
-      "url": "/dashboard"
+      "name": "Iniciar Turno",
+      "short_name": "Turno",
+      "description": "Marcación de asistencia y geolocalización",
+      "url": "/mobile",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192" }]
     },
     {
       "name": "Mi Programación",
-      "short_name": "Turnos",
-      "description": "Ver mi programación de turnos",
-      "url": "/scheduling"
+      "short_name": "Agenda",
+      "description": "Consulta de turnos asignados",
+      "url": "/scheduling",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192" }]
     }
   ]
 }

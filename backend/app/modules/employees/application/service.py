@@ -58,12 +58,32 @@ class EmployeeService:
         updated = await self.employee_repo.update(employee_id, **kwargs)
         return {"id": updated.id, "message": "Employee updated successfully"}
 
-    async def delete_employee(self, employee_id: str) -> dict:
+    async def delete_employee(self, employee_id: str, db: any = None) -> dict:
         employee = await self.employee_repo.get_by_id(employee_id)
         if not employee:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empleado no encontrado")
+
+        if db:
+            from sqlalchemy import select, func
+            from app.shared.database.models_access import AccessRecord
+            from app.shared.database.models_scheduling import Shift
+            from app.shared.database.models_contract import Contract
+            from app.shared.database.models_payroll import PayrollRecord
+
+            access_count = (await db.execute(select(func.count(AccessRecord.id)).where(AccessRecord.employee_id == employee_id))).scalar() or 0
+            shift_count = (await db.execute(select(func.count(Shift.id)).where(Shift.employee_id == employee_id))).scalar() or 0
+            contract_count = (await db.execute(select(func.count(Contract.id)).where(Contract.employee_id == employee_id))).scalar() or 0
+            payroll_count = (await db.execute(select(func.count(PayrollRecord.id)).where(PayrollRecord.employee_id == employee_id))).scalar() or 0
+
+            total_movements = access_count + shift_count + contract_count + payroll_count
+            if total_movements > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se puede eliminar el empleado '{employee.first_name} {employee.last_name}' porque tiene {total_movements} movimientos históricos registrados (asistencias, turnos, contratos o nómina) necesarios para informes. Le sugerimos modificar su información o cambiar su estado a 'Inactivo'."
+                )
+
         await self.employee_repo.update(employee_id, is_deleted=True, status="terminated")
-        return {"message": "Employee deleted successfully"}
+        return {"message": "Empleado eliminado correctamente"}
 
     async def list_employees(
         self,
@@ -102,6 +122,11 @@ class EmployeeService:
                     "username": e.username,
                     "platform_access": e.platform_access,
                     "account_status": e.account_status,
+                    "eps": e.eps,
+                    "arl": e.arl,
+                    "afp": e.afp,
+                    "city": e.city,
+                    "department_loc": e.department_loc,
                 }
                 for e in items
             ],
@@ -175,3 +200,55 @@ class EmployeeService:
         hashed = hash_password(new_password)
         await self.employee_repo.update(employee_id, hashed_password=hashed)
         return {"message": "Password reset successfully"}
+
+    async def bulk_import_employees(self, company_id: str, employees_data: list[dict]) -> dict:
+        created_count = 0
+        skipped_count = 0
+        errors = []
+
+        for idx, data in enumerate(employees_data):
+            doc_num = str(data.get("document_number", "")).strip()
+            first_name = str(data.get("first_name", "")).strip()
+            last_name = str(data.get("last_name", "")).strip()
+
+            if not doc_num or not first_name or not last_name:
+                errors.append(f"Fila {idx + 1}: Faltan campos obligatorios (Cédula, Nombre o Apellido)")
+                skipped_count += 1
+                continue
+
+            existing = await self.employee_repo.get_by_document(doc_num)
+            if existing:
+                skipped_count += 1
+                errors.append(f"Fila {idx + 1}: Ya existe el empleado con cédula '{doc_num}' ({existing.first_name} {existing.last_name})")
+                continue
+
+            try:
+                emp_dict = {
+                    "company_id": company_id or "dla-company-main",
+                    "code": str(data.get("code", "")).strip() or f"EMP-{doc_num}",
+                    "document_type": str(data.get("document_type", "CC")).strip(),
+                    "document_number": doc_num,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "email": str(data.get("email", "")).strip() or f"emp{doc_num}@dla.com",
+                    "phone": str(data.get("phone", "")).strip() or None,
+                    "mobile": str(data.get("mobile", "")).strip() or None,
+                    "job_position": str(data.get("job_position", "Operador")).strip(),
+                    "department": str(data.get("department", "Operaciones")).strip(),
+                    "eps": str(data.get("eps", "")).strip() or None,
+                    "arl": str(data.get("arl", "")).strip() or None,
+                    "afp": str(data.get("afp", "")).strip() or None,
+                    "status": str(data.get("status", "active")).strip(),
+                }
+                await self.employee_repo.create(**emp_dict)
+                created_count += 1
+            except Exception as e:
+                skipped_count += 1
+                errors.append(f"Fila {idx + 1} (Doc {doc_num}): Error de guardado: {str(e)}")
+
+        return {
+            "created_count": created_count,
+            "skipped_count": skipped_count,
+            "total_processed": len(employees_data),
+            "errors": errors,
+        }

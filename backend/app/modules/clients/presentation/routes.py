@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Query
-from sqlalchemy import func
+from fastapi import APIRouter, Query, Response
+from pydantic import BaseModel
 
 from app.core.deps import CurrentUser, DbSession
 from app.modules.clients.application.service import ClientService
@@ -30,9 +30,35 @@ def get_service(db: DbSession) -> ClientService:
     )
 
 
+@router.get("/template")
+async def download_clients_template():
+    content = "nit,name,trade_name,client_type,email,phone,mobile,address,department,city,latitude,longitude,geofence_radius,notes\n900123456-1,Edificio Torre Central,Torre Central,enterprise,contacto@torrecentral.com,6015551234,3109876543,Calle 100 # 19-61,Bogotá D.C.,Bogotá D.C.,4.6835,-74.0532,100,Sede principal controles de acceso\n"
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=plantilla_clientes_dla.csv"},
+    )
+
+
+class ClientImportRequest(BaseModel):
+    company_id: str | None = None
+    clients: list[dict]
+
+
+@router.post("/import")
+async def import_clients_bulk(body: ClientImportRequest, current_user: CurrentUser, db: DbSession):
+    service = get_service(db)
+    return await service.bulk_import_clients(body.company_id or current_user.company_id, body.clients)
+
+
 @router.post("", status_code=201)
 async def create_client(body: ClientCreateRequest, current_user: CurrentUser, db: DbSession) -> dict:
-    return await get_service(db).create_client(**body.model_dump())
+    data = body.model_dump()
+    if not data.get("company_id"):
+        data["company_id"] = getattr(current_user, "company_id", None) or "dla-company-main"
+    res = await get_service(db).create_client(**data)
+    await db.commit()
+    return res
 
 
 @router.get("", response_model=ClientListResponse)
@@ -40,7 +66,7 @@ async def list_clients(
     current_user: CurrentUser, db: DbSession,
     company_id: str | None = Query(None), client_type: str | None = Query(None),
     status: str | None = Query(None), search: str | None = Query(None),
-    page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100),
+    page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=1000),
 ) -> ClientListResponse:
     result = await get_service(db).list_clients(
         company_id=company_id, client_type=client_type, status=status,
@@ -61,7 +87,9 @@ async def update_client(client_id: str, body: ClientUpdateRequest, current_user:
 
 @router.delete("/{client_id}")
 async def delete_client(client_id: str, current_user: CurrentUser, db: DbSession) -> dict:
-    return await get_service(db).delete_client(client_id)
+    res = await get_service(db).delete_client(client_id, db=db)
+    await db.commit()
+    return res
 
 
 @router.patch("/{client_id}/status")

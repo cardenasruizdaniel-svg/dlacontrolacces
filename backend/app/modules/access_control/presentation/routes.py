@@ -17,17 +17,13 @@ def get_service(db: DbSession) -> AccessControlService:
 
 
 @router.post("/entry")
-async def register_entry(body: EntryRequest, current_user: CurrentUser, db: DbSession) -> dict:
-    payload = body.model_dump()
-    payload["employee_id"] = current_user.id
-    return await get_service(db).register_entry(**payload)
+async def register_entry(body: EntryRequest, db: DbSession) -> dict:
+    return await get_service(db).register_entry(**body.model_dump())
 
 
 @router.post("/exit")
-async def register_exit(body: ExitRequest, current_user: CurrentUser, db: DbSession) -> dict:
-    payload = body.model_dump()
-    payload["employee_id"] = current_user.id
-    return await get_service(db).register_exit(**payload)
+async def register_exit(body: ExitRequest, db: DbSession) -> dict:
+    return await get_service(db).register_exit(**body.model_dump())
 
 
 @router.get("/records")

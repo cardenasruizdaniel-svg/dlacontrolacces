@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
+from pydantic import BaseModel
 
 from app.core.deps import CurrentUser, DbSession
 from app.modules.employees.application.service import EmployeeService
@@ -37,7 +38,7 @@ async def list_employees(
     status: str | None = Query(None),
     search: str | None = Query(None),
     page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=1, le=100),
+    page_size: int = Query(100, ge=1, le=1000),
 ) -> EmployeeListResponse:
     service = get_service(db)
     result = await service.list_employees(
@@ -45,6 +46,27 @@ async def list_employees(
         status=status, search=search, page=page, page_size=page_size,
     )
     return EmployeeListResponse(**result.__dict__)
+
+
+@router.get("/template")
+async def download_employees_template():
+    content = "code,document_type,document_number,first_name,last_name,email,phone,mobile,job_position,department,eps,arl,afp,status\nEMP-1001,CC,1020304050,Carlos,Pérez,carlos.perez@ejemplo.com,3001234567,3001234567,Operador de Campo,Operaciones,EPS Sura,Positiva ARL,Porvenir,active\n"
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=plantilla_empleados_dla.csv"},
+    )
+
+
+class EmployeeImportRequest(BaseModel):
+    company_id: str | None = None
+    employees: list[dict]
+
+
+@router.post("/import")
+async def import_employees_bulk(body: EmployeeImportRequest, current_user: CurrentUser, db: DbSession):
+    service = get_service(db)
+    return await service.bulk_import_employees(body.company_id or current_user.company_id, body.employees)
 
 
 @router.get("/stats/summary")
@@ -111,7 +133,9 @@ async def update_employee(employee_id: str, body: EmployeeUpdateRequest, current
 @router.delete("/{employee_id}")
 async def delete_employee(employee_id: str, current_user: CurrentUser, db: DbSession) -> dict:
     service = get_service(db)
-    return await service.delete_employee(employee_id)
+    res = await service.delete_employee(employee_id, db=db)
+    await db.commit()
+    return res
 
 
 @router.post("/{employee_id}/access", status_code=201)

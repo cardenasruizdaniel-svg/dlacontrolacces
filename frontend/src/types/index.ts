@@ -8,8 +8,8 @@ export interface User {
   mfa_enabled: boolean;
   company_id: string | null;
   role_id: string | null;
-  employee_id?: string | null;
-  created_at?: string | null;
+  platform_access?: string;
+  photo_url?: string | null;
 }
 
 export interface Employee {

@@ -1,84 +1,70 @@
 services:
+  # ----------------------------------------------------------------------------
+  # FastAPI Backend API Service
+  # ----------------------------------------------------------------------------
   - type: web
-    name: dla-backend
+    name: dla-access-backend
     env: python
-    region: ohio
-    plan: starter
-    buildCommand: pip install -e ".[prod]"
-    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
-    healthCheckPath: /health
+    rootDir: backend
+    region: oregon
+    buildCommand: "pip install -r pyproject.toml"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: ENVIRONMENT
         value: production
+      - key: APP_NAME
+        value: "DLA Access Enterprise"
       - key: SECRET_KEY
         generateValue: true
       - key: ENCRYPTION_KEY
         generateValue: true
       - key: DATABASE_URL
         fromDatabase:
-          name: dla-db
+          name: dla-access-db
           property: connectionString
       - key: REDIS_URL
         fromService:
-          name: dla-redis
           type: redis
+          name: dla-access-redis
           property: connectionString
       - key: CORS_ORIGINS
-        value: '["https://dla-frontend.onrender.com","https://dla-pwa.onrender.com"]'
-      - key: RABBITMQ_URL
-        value: ""
-      - key: GOOGLE_MAPS_API_KEY
-        sync: false
-      - key: AI_API_KEY
-        sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
+        value: "[\"https://dla-access-frontend.onrender.com\", \"http://localhost:3000\"]"
 
+  # ----------------------------------------------------------------------------
+  # Next.js Frontend Web Service
+  # ----------------------------------------------------------------------------
   - type: web
-    name: dla-frontend
+    name: dla-access-frontend
     env: node
-    region: ohio
-    plan: starter
-    buildCommand: npm ci && npm run build
-    startCommand: npm start
-    healthCheckPath: /login
+    rootDir: frontend
+    region: oregon
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm start"
     envVars:
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_API_URL
         fromService:
-          name: dla-backend
           type: web
+          name: dla-access-backend
           property: host
-        value: /api/v1
 
-  - type: web
-    name: dla-pwa
-    env: static
-    region: ohio
-    buildCommand: npm ci && npm run build
-    staticPublishPath: ./dist
-    envVars:
-      - key: VITE_API_URL
-        fromService:
-          name: dla-backend
-          type: web
-          property: host
-        value: /api/v1
+  # ----------------------------------------------------------------------------
+  # Redis Cache
+  # ----------------------------------------------------------------------------
+  - type: redis
+    name: dla-access-redis
+    region: oregon
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
 
 databases:
-  - name: dla-db
-    plan: starter
-    databaseName: dla_access
-    region: ohio
-
-redis:
-  - name: dla-redis
-    plan: starter
-    region: ohio
+  # ----------------------------------------------------------------------------
+  # PostgreSQL Database
+  # ----------------------------------------------------------------------------
+  - name: dla-access-db
+    databaseName: dla_access_enterprise
+    user: dla
+    region: oregon
+    plan: free

@@ -25,5 +25,3 @@ from app.shared.database.models_auth import (  # noqa: F401
 from app.shared.database.models_contract import Contract, ContractType  # noqa: F401
 from app.shared.database.models_geolocation import Geofence, LocationHistory, RouteHistory  # noqa: F401
 from app.shared.database.models_payroll import PayrollPeriod, PayrollRecord, PayrollConcept  # noqa: F401
-from app.shared.database.models_access import AccessRecord  # noqa: F401
-from app.shared.database.models_scheduling import ShiftTemplate, ScheduleSeries, Schedule, Shift  # noqa: F401

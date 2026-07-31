@@ -2,127 +2,131 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
-import { useIsMobile } from "@/hooks/useMediaQuery";
+import { useAuthStore } from "@/stores/authStore";
 import {
-  LayoutDashboard, Users, FileText, DollarSign,
+  LayoutDashboard, Users, UserCog, FileText, DollarSign,
   Calendar, MapPin, Camera, Shield, BarChart3, Bot, Settings,
-  Building2, ShieldCheck, PlayCircle, Wallet, User,
+  Building2, Briefcase, Activity, ShieldCheck, Smartphone, BookOpen,
 } from "lucide-react";
 
+import { useSystemConfig } from "@/lib/useSystemConfig";
+
 const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Mi Programación", href: "/my-scheduling", icon: Calendar, mobile: true },
-  { label: "Mi Turno", href: "/shift", icon: PlayCircle, mobile: true },
-  { label: "Mi Nómina", href: "/payroll", icon: Wallet, mobile: true },
-  { label: "Mi Perfil", href: "/profile", icon: User, mobile: true },
-  { label: "Empleados", href: "/employees", icon: Users },
-  { label: "Contratos", href: "/contracts", icon: FileText },
-  { label: "Clientes", href: "/clients", icon: Building2 },
-  { label: "Programación Admin", href: "/scheduling", icon: Shield },
-  { label: "Geolocalización", href: "/geolocation", icon: MapPin },
-  { label: "Acceso", href: "/access-control", icon: ShieldCheck },
-  { label: "Roles", href: "/iam/roles", icon: ShieldCheck },
-  { label: "Reconocimiento", href: "/facial-recognition", icon: Camera },
-  { label: "Reportes", href: "/reports", icon: BarChart3 },
+  { label: "Panel de Control", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Gestión de Empleados", href: "/employees", icon: Users },
+  { label: "Contratos Laborales", href: "/contracts", icon: FileText },
+  { label: "Nómina y Liquidación", href: "/payroll", icon: DollarSign },
+  { label: "Clientes y Sedes", href: "/clients", icon: Building2 },
+  { label: "Programación de Turnos", href: "/scheduling", icon: Calendar },
+  { label: "Geolocalización GPS", href: "/geolocation", icon: MapPin },
+  { label: "Control de Acceso", href: "/access-control", icon: Shield },
+  { label: "Matriz de Roles e IAM", href: "/iam/roles", icon: ShieldCheck },
+  { label: "Reconocimiento Facial", href: "/facial-recognition", icon: Camera },
+  { label: "Reportes y Auditoría", href: "/reports", icon: BarChart3 },
   { label: "Asistente IA", href: "/ai-assistant", icon: Bot },
-  { label: "Ayuda", href: "/help", icon: Settings, mobile: true },
+  { label: "Manual de Funcionamiento", href: "/help", icon: BookOpen },
   { label: "Configuración", href: "/settings", icon: Settings },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { sidebarOpen, toggleSidebar } = useUIStore();
-  const isMobile = useIsMobile();
+  const { sidebarOpen } = useUIStore();
+  const { user } = useAuthStore();
+  const { configs } = useSystemConfig();
+  const isAdmin = user?.is_superuser || user?.role_id;
 
-  const show = isMobile ? sidebarOpen : true;
-  const width = isMobile ? "w-72" : sidebarOpen ? "w-64" : "w-16";
+  const companyLogo = configs.find((c) => c.key === "COMPANY_LOGO")?.value;
+  const companyName = configs.find((c) => c.key === "COMPANY_NAME")?.value || "DLA Redes y Seguridad";
 
-  const sidebar = (
+  return (
     <aside className={cn(
-      "flex flex-col border-r bg-card h-full transition-all duration-300",
-      width,
-      isMobile && "fixed left-0 top-0 z-50 shadow-2xl",
+      "hidden md:flex flex-col border-r bg-card transition-all duration-300",
+      sidebarOpen ? "w-64" : "w-16",
     )}>
-      {isMobile && (
-        <div className="flex h-16 items-center justify-between border-b px-4">
-          <div className="flex items-center gap-2">
+      <div className="flex h-16 items-center border-b px-4">
+        <div className="flex items-center gap-2">
+          {companyLogo ? (
+            <div className="h-8 w-8 rounded-lg border bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+              {/* eslint-disable-next-next/no-img-element */}
+              <img src={companyLogo} alt="Logo" className="h-full w-full object-contain p-0.5" />
+            </div>
+          ) : (
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
               DA
             </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-bold leading-tight">DLA Access</span>
-              <span className="text-[10px] text-muted-foreground leading-tight">Enterprise</span>
+          )}
+          {sidebarOpen && (
+            <div className="flex flex-col overflow-hidden">
+              <span className="text-xs font-bold leading-tight truncate">{companyName}</span>
+              <span className="text-[10px] text-muted-foreground leading-tight">Access Enterprise</span>
             </div>
-          </div>
-          <button onClick={toggleSidebar} className="rounded-md p-1 hover:bg-muted">
-            <X className="h-5 w-5" />
-          </button>
+          )}
         </div>
-      )}
-      {!isMobile && (
-        <div className="flex h-16 items-center border-b px-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-              DA
-            </div>
-            {sidebarOpen && (
-              <div className="flex flex-col">
-                <span className="text-sm font-bold leading-tight">DLA Access</span>
-                <span className="text-[10px] text-muted-foreground leading-tight">Enterprise</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      </div>
       <nav className="flex-1 overflow-y-auto p-2 space-y-1">
         {navItems.map((item) => {
-          if (isMobile && !item.mobile && item.label !== "Dashboard" && !item.label.includes("Configuración")) {
-            if (item.href.startsWith("/employees") || item.href.startsWith("/contracts") || item.href.startsWith("/clients") || item.href.startsWith("/geolocation") || item.href.startsWith("/access-control") || item.href.startsWith("/iam/") && !item.href.includes("profile") || item.href.startsWith("/facial-recognition") || item.href.startsWith("/reports") || item.href.startsWith("/ai-assistant")) {
-              return null;
-            }
-          }
-          const Icon = item.icon;
           const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
           return (
             <Link
               key={item.href}
               href={item.href}
-              onClick={() => { if (isMobile) toggleSidebar(); }}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              {(!isMobile && sidebarOpen) || isMobile ? <span className="truncate">{item.label}</span> : null}
+              <item.icon className="h-4 w-4 shrink-0" />
+              {sidebarOpen && <span>{item.label}</span>}
             </Link>
           );
         })}
+        {isAdmin && (
+          <div className="pt-2 space-y-1.5">
+            <Link
+              href="/mobile"
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-bold transition-all shadow-sm",
+                pathname === "/mobile"
+                  ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
+                  : "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 hover:bg-blue-100 border border-blue-200",
+              )}
+            >
+              <Smartphone className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400 animate-pulse" />
+              {sidebarOpen && (
+                <div className="flex items-center justify-between w-full">
+                  <span>PWA Operativa Campo</span>
+                  <span className="text-[9px] bg-blue-600 text-white px-1 py-0.5 rounded font-mono">CAMPO</span>
+                </div>
+              )}
+            </Link>
+
+            <Link
+              href="/attendance"
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-bold transition-all shadow-sm",
+                pathname === "/attendance"
+                  ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white"
+                  : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 border border-emerald-200",
+              )}
+            >
+              <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              {sidebarOpen && (
+                <div className="flex items-center justify-between w-full">
+                  <span>PWA Asistencia Sedes</span>
+                  <span className="text-[9px] bg-emerald-600 text-white px-1 py-0.5 rounded font-mono">SEDES</span>
+                </div>
+              )}
+            </Link>
+          </div>
+        )}
       </nav>
-      {(!isMobile && sidebarOpen) && (
+      {sidebarOpen && (
         <div className="border-t p-4">
           <p className="text-[10px] text-muted-foreground text-center">&copy; DLA Redes y Seguridad</p>
         </div>
       )}
     </aside>
-  );
-
-  if (!isMobile) return sidebar;
-
-  return (
-    <>
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-          onClick={toggleSidebar}
-        />
-      )}
-      <div className={cn("fixed inset-y-0 left-0 z-50 transition-transform duration-300", !sidebarOpen && "-translate-x-full")}>
-        {sidebar}
-      </div>
-    </>
   );
 }

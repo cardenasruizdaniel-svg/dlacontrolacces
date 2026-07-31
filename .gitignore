@@ -1,47 +1,36 @@
-# Environment / secrets
+# Operating System
+.DS_Store
+Thumbs.db
+*.log
+
+# Environment variables
 .env
-*.env
-!*.env.example
+.env.local
+.env.production
 backend/.env
 frontend/.env.local
 
-# Dependencies
-node_modules/
-venv/
-.venv/
+# Python / Backend
 __pycache__/
 *.py[cod]
-.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+*$py.class
+backend/venv/
+backend/.pytest_cache/
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/*.log
 
-# Builds
-.next/
-dist/
-build/
+# Node.js / Frontend & Mobile
+node_modules/
+frontend/.next/
+frontend/out/
+mobile/.expo/
+mobile/dist/
 *.tsbuildinfo
 
-# Runtime data
-backend/uploads/
-uploads/
-*.log
-logs/
-
-# Tests / coverage
-.coverage
-htmlcov/
-coverage/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-
-# OS
-Thumbs.db
-.DS_Store
-
-# Expo
-.expo/
-mobile/.expo/
+# Docker / Logs
+*.log.err
+backend_err.log
+backend_out.log
+expo_out.log
+next_out.log

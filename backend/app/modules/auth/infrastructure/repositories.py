@@ -123,9 +123,30 @@ class AuditRepository:
         platform: str | None = None,
         status: str = "success",
     ) -> AuditLog:
+        # Safeguard FK constraints: check if user_id or employee_id exists in DB
+        valid_user_id = None
+        valid_employee_id = None
+
+        if user_id:
+            user_res = await self.db.execute(select(User.id).where(User.id == user_id))
+            if user_res.scalar_one_or_none():
+                valid_user_id = user_id
+            elif not employee_id:
+                # Check if passed user_id is actually an employee_id
+                from app.shared.database.models_hr import Employee
+                emp_res = await self.db.execute(select(Employee.id).where(Employee.id == user_id))
+                if emp_res.scalar_one_or_none():
+                    valid_employee_id = user_id
+
+        if employee_id and not valid_employee_id:
+            from app.shared.database.models_hr import Employee
+            emp_res = await self.db.execute(select(Employee.id).where(Employee.id == employee_id))
+            if emp_res.scalar_one_or_none():
+                valid_employee_id = employee_id
+
         audit = AuditLog(
-            user_id=user_id,
-            employee_id=employee_id,
+            user_id=valid_user_id,
+            employee_id=valid_employee_id,
             action=action,
             module=module,
             entity_type=entity_type,

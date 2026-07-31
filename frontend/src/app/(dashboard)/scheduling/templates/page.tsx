@@ -69,20 +69,29 @@ export default function ShiftTemplatesPage() {
     if (!form.name || !form.start_time || !form.end_time) return;
     setSaving(true);
     try {
-      const companyId = localStorage.getItem("company_id") || "";
+      const companyId = localStorage.getItem("company_id") || "dla-company-main";
       const payload = { ...form, company_id: companyId, duration_hours: parseFloat(form.duration_hours) };
-      if (editing) { await api.put(`/scheduling/templates/${editing.id}`, payload); }
-      else { await api.post("/scheduling/templates", payload); }
+      if (editing) {
+        const res = await api.put(`/scheduling/templates/${editing.id}`, payload);
+        if (res.data && res.data.id) {
+          setTemplates((prev) => prev.map((t) => (t.id === editing.id ? { ...t, ...res.data } : t)));
+        }
+      } else {
+        const res = await api.post("/scheduling/templates", payload);
+        if (res.data && res.data.id) {
+          setTemplates((prev) => [res.data, ...prev.filter((t) => t.id !== res.data.id)]);
+        }
+      }
       setDialogOpen(false);
-      loadData();
-    } catch (e: any) { console.error("Templates save error:", e); alert("Error al guardar plantilla: " + (e?.response?.data?.detail || e?.message || "Error desconocido")); }
+      await loadData();
+    } catch (e: any) { alert("Error al guardar plantilla: " + (e?.response?.data?.detail || e?.message || "Error desconocido")); }
     setSaving(false);
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
-    try { await api.delete(`/scheduling/templates/${deleteTarget.id}`); setDeleteTarget(null); loadData(); } catch (e: any) { console.error("Templates delete error:", e); alert("Error al eliminar plantilla: " + (e?.response?.data?.detail || e?.message || "Error desconocido")); }
+    try { await api.delete(`/scheduling/templates/${deleteTarget.id}`); setDeleteTarget(null); await loadData(); } catch (e: any) { alert("Error al eliminar plantilla: " + (e?.response?.data?.detail || e?.message || "Error desconocido")); }
     setDeleting(false);
   };
 
@@ -92,8 +101,8 @@ export default function ShiftTemplatesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Plantillas de Turno</h1>
-          <p className="text-muted-foreground">Catálogo reutilizable de turnos para programación</p>
+          <h1 className="text-2xl font-bold tracking-tight">Plantillas de Turnos</h1>
+          <p className="text-xs text-muted-foreground">Catálogo reutilizable de turnos para programación</p>
         </div>
         <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Nueva Plantilla</Button>
       </div>

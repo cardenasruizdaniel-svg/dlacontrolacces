@@ -9,7 +9,7 @@ import { Bot, Send, Search, BarChart3, AlertTriangle, Route } from "lucide-react
 export default function AIAssistantPage() {
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState<{ role: string; content: string; data?: any }[]>([
-    { role: "assistant", content: "Hola, soy el asistente inteligente de DLA Access Enterprise. Puedo ayudarte con: buscar empleados, analizar productividad, detectar anomal\u00edas, predecir ausencias y optimizar rutas. \u00bfQu\u00e9 necesitas?" },
+    { role: "assistant", content: "Hola, soy el asistente inteligente de DLA Access Enterprise. Puedo ayudarte con: buscar empleados, analizar productividad, detectar anomalías, predecir ausencias y optimizar rutas. ¿Qué necesitas?" },
   ]);
   const [loading, setLoading] = useState(false);
 
@@ -31,7 +31,7 @@ export default function AIAssistantPage() {
 
   const suggestions = [
     { label: "Buscar empleados", icon: Search, query: "Buscar empleado: Juan" },
-    { label: "Anomal\u00edas", icon: AlertTriangle, query: "Mostrar ausencias y anomal\u00edas" },
+    { label: "Anomalías", icon: AlertTriangle, query: "Mostrar ausencias y anomalías" },
     { label: "Productividad", icon: BarChart3, query: "Analizar productividad" },
     { label: "Optimizar rutas", icon: Route, query: "Optimizar rutas de campo" },
   ];
@@ -40,7 +40,7 @@ export default function AIAssistantPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Asistente IA</h1>
-        <p className="text-muted-foreground">Inteligencia artificial para an\u00e1lisis y toma de decisiones</p>
+        <p className="text-muted-foreground">Inteligencia artificial para análisis y toma de decisiones</p>
       </div>
       <div className="grid gap-6 md:grid-cols-4">
         <Card className="md:col-span-3">

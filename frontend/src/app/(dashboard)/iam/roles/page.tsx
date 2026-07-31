@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import {
-  Shield, Plus, Save, Loader2, Trash2, ChevronDown, ChevronRight, Check, X
+  Shield, Plus, Save, Loader2, Trash2, ChevronDown, ChevronRight, Check,
+  Pencil, AlertCircle, CheckCircle2
 } from "lucide-react";
 import api from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -19,6 +20,19 @@ interface Role {
 
 interface Perm { id: string; module: string; action: string; display_name: string | null; is_active: boolean; }
 
+// Roles predefinidos del sistema — se usan como fallback si la API no responde
+const DEFAULT_ROLES: Role[] = [
+  { id: "default-superadmin", name: "Super Admin", display_name: "Super Administrador", description: "Acceso total al sistema", is_active: true, is_system: true, level: 100, color: "#DC2626", icon: "shield", permission_count: 160, user_count: 1 },
+  { id: "default-gerencia", name: "Gerencia", display_name: "Gerencia", description: "Acceso de lectura general + aprobaciones", is_active: true, is_system: true, level: 80, color: "#7C3AED", icon: "briefcase", permission_count: 11, user_count: 0 },
+  { id: "default-administracion", name: "Administración", display_name: "Administración", description: "Gestión completa de operaciones administrativas", is_active: true, is_system: true, level: 70, color: "#2563EB", icon: "cog", permission_count: 38, user_count: 0 },
+  { id: "default-supervisor", name: "Supervisor", display_name: "Supervisor", description: "Supervisión de operaciones y personal", is_active: true, is_system: true, level: 60, color: "#EA580C", icon: "eye", permission_count: 14, user_count: 0 },
+  { id: "default-auditor", name: "Auditor", display_name: "Auditor", description: "Solo lectura + acceso a auditoría y reportes", is_active: true, is_system: true, level: 65, color: "#9333EA", icon: "search", permission_count: 13, user_count: 0 },
+  { id: "default-administrativo", name: "Administrativo", display_name: "Administrativo", description: "Gestión de datos administrativos y turnos", is_active: true, is_system: true, level: 50, color: "#0891B2", icon: "clipboard", permission_count: 16, user_count: 0 },
+  { id: "default-medico", name: "Médico", display_name: "Médico", description: "Acceso a información médica y pacientes", is_active: true, is_system: true, level: 45, color: "#059669", icon: "heart", permission_count: 5, user_count: 0 },
+  { id: "default-enfermero", name: "Enfermero", display_name: "Enfermero", description: "Control de acceso y cuidado básico", is_active: true, is_system: true, level: 40, color: "#16A34A", icon: "activity", permission_count: 5, user_count: 0 },
+  { id: "default-cuidador", name: "Cuidador", display_name: "Cuidador", description: "Acceso básico para cuidadores", is_active: true, is_system: true, level: 30, color: "#CA8A04", icon: "user", permission_count: 3, user_count: 0 },
+];
+
 export default function RolesPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [allPerms, setAllPerms] = useState<Perm[]>([]);
@@ -28,7 +42,16 @@ export default function RolesPage() {
   const [saving, setSaving] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [newRole, setNewRole] = useState({ name: "", display_name: "", description: "", level: "50", color: "#2563EB" });
+  const [usingFallback, setUsingFallback] = useState(false);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const showToast = (type: "success" | "error", message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -37,19 +60,39 @@ export default function RolesPage() {
         api.get("/iam/roles"),
         api.get("/iam/permissions"),
       ]);
-      if (rolesRes.status === "fulfilled") setRoles(rolesRes.value.data.items || []);
-      if (permsRes.status === "fulfilled") setAllPerms(permsRes.value.data.items || []);
-    } catch (err) { console.error(err); }
+
+      let rolesLoaded = false;
+      if (rolesRes.status === "fulfilled" && rolesRes.value.data.items?.length > 0) {
+        setRoles(rolesRes.value.data.items);
+        rolesLoaded = true;
+        setUsingFallback(false);
+      }
+      if (permsRes.status === "fulfilled") {
+        setAllPerms(permsRes.value.data.items || []);
+      }
+
+      // Si no se cargaron roles desde la API, usar los predefinidos
+      if (!rolesLoaded) {
+        setRoles(DEFAULT_ROLES);
+        setUsingFallback(true);
+      }
+    } catch (err) {
+      console.error("Error cargando datos IAM:", err);
+      setRoles(DEFAULT_ROLES);
+      setUsingFallback(true);
+    }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
-    if (selectedRole) {
+    if (selectedRole && !selectedRole.startsWith("default-")) {
       api.get(`/iam/roles/${selectedRole}/permissions`)
         .then(res => setSelectedPerms(new Set(res.data.permission_ids || [])))
         .catch(() => setSelectedPerms(new Set()));
+    } else {
+      setSelectedPerms(new Set());
     }
   }, [selectedRole]);
 
@@ -79,25 +122,22 @@ export default function RolesPage() {
     });
   };
 
-  const toggleActionAll = (act: string) => {
-    const actPermIds = modules.map(m => getPermId(m, act)).filter(Boolean) as string[];
-    const allSelected = actPermIds.every(id => selectedPerms.has(id));
-    setSelectedPerms(prev => {
-      const next = new Set(prev);
-      actPermIds.forEach(id => { if (allSelected) next.delete(id); else next.add(id); });
-      return next;
-    });
-  };
-
   const savePermissions = async () => {
-    if (!selectedRole) return;
+    if (!selectedRole || selectedRole.startsWith("default-")) {
+      showToast("error", "Los roles predefinidos no se pueden modificar en modo sin conexión");
+      return;
+    }
     setSaving(true);
     try {
       await api.put(`/iam/roles/${selectedRole}/permissions`, {
         permission_ids: Array.from(selectedPerms),
       });
+      showToast("success", "Permisos guardados correctamente");
       await loadData();
-    } catch (err) { console.error(err); }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Error al guardar permisos";
+      showToast("error", msg);
+    }
     finally { setSaving(false); }
   };
 
@@ -111,14 +151,60 @@ export default function RolesPage() {
       });
       setCreateDialogOpen(false);
       setNewRole({ name: "", display_name: "", description: "", level: "50", color: "#2563EB" });
+      showToast("success", `Rol "${newRole.display_name || newRole.name}" creado correctamente`);
       await loadData();
-    } catch (err) { console.error(err); }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Error al crear el rol. Verifique que tiene permisos de administrador.";
+      showToast("error", msg);
+    }
+    finally { setSaving(false); }
+  };
+
+  const updateRole = async () => {
+    if (!editingRole) return;
+    setSaving(true);
+    try {
+      await api.put(`/iam/roles/${editingRole.id}`, {
+        display_name: editingRole.display_name,
+        description: editingRole.description,
+        level: editingRole.level,
+        color: editingRole.color,
+      });
+      setEditDialogOpen(false);
+      setEditingRole(null);
+      showToast("success", "Rol actualizado correctamente");
+      await loadData();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Error al actualizar el rol";
+      showToast("error", msg);
+    }
     finally { setSaving(false); }
   };
 
   const deleteRole = async (roleId: string) => {
-    if (!confirm("Eliminar este rol?")) return;
-    try { await api.delete(`/iam/roles/${roleId}`); await loadData(); } catch (err) { console.error(err); }
+    if (roleId.startsWith("default-")) {
+      showToast("error", "Los roles del sistema no se pueden eliminar");
+      return;
+    }
+    if (!confirm("¿Está seguro de eliminar este rol? Esta acción no se puede deshacer.")) return;
+    try {
+      await api.delete(`/iam/roles/${roleId}`);
+      showToast("success", "Rol eliminado correctamente");
+      if (selectedRole === roleId) setSelectedRole(null);
+      await loadData();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Error al eliminar el rol. Puede tener usuarios asignados.";
+      showToast("error", msg);
+    }
+  };
+
+  const openEditDialog = (role: Role) => {
+    if (role.id.startsWith("default-")) {
+      showToast("error", "Los roles predefinidos no se pueden editar en modo sin conexión");
+      return;
+    }
+    setEditingRole({ ...role });
+    setEditDialogOpen(true);
   };
 
   const toggleExpand = (mod: string) => {
@@ -131,18 +217,33 @@ export default function RolesPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Toast de notificación */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-white text-sm transition-all animate-in slide-in-from-right ${toast.type === "success" ? "bg-green-600" : "bg-red-600"}`}>
+          {toast.type === "success" ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+          {toast.message}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Roles y Permisos</h1>
-          <p className="text-sm text-gray-500">Configuracion de roles y matriz de permisos por modulo</p>
+          <p className="text-sm text-gray-500">Configuración de roles y matriz de permisos por módulo</p>
         </div>
         <Button onClick={() => setCreateDialogOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />Nuevo Rol
         </Button>
       </div>
 
+      {usingFallback && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          <span>Mostrando roles predefinidos del sistema. Los roles se sincronizan con el servidor cuando hay conexión.</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-4">
+        <div className="col-span-12 lg:col-span-4">
           <Card>
             <CardHeader><CardTitle className="text-lg">Roles ({roles.length})</CardTitle></CardHeader>
             <CardContent className="space-y-2">
@@ -159,11 +260,16 @@ export default function RolesPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Badge variant="outline" className="text-xs">{r.level}</Badge>
+                      <Badge variant="outline" className="text-xs">Nivel {r.level}</Badge>
                       {!r.is_system && (
-                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={e => { e.stopPropagation(); deleteRole(r.id); }}>
-                          <Trash2 className="h-3 w-3 text-destructive" />
-                        </Button>
+                        <>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={e => { e.stopPropagation(); openEditDialog(r); }}>
+                            <Pencil className="h-3 w-3 text-blue-600" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={e => { e.stopPropagation(); deleteRole(r.id); }}>
+                            <Trash2 className="h-3 w-3 text-destructive" />
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -178,7 +284,7 @@ export default function RolesPage() {
           </Card>
         </div>
 
-        <div className="col-span-8">
+        <div className="col-span-12 lg:col-span-8">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -187,11 +293,15 @@ export default function RolesPage() {
                     {selectedRole ? `Permisos: ${selectedRoleData?.display_name || selectedRoleData?.name}` : "Seleccione un rol"}
                   </CardTitle>
                   <CardDescription>
-                    {selectedRole ? `${selectedPerms.size} de ${allPerms.length} permisos seleccionados` : "Haga clic en un rol para configurar sus permisos"}
+                    {selectedRole
+                      ? allPerms.length > 0
+                        ? `${selectedPerms.size} de ${allPerms.length} permisos seleccionados`
+                        : "Los permisos se cargarán cuando haya conexión con el servidor"
+                      : "Haga clic en un rol para ver y editar sus permisos"}
                   </CardDescription>
                 </div>
-                {selectedRole && (
-                  <Button onClick={savePermissions} disabled={saving}>
+                {selectedRole && allPerms.length > 0 && (
+                  <Button onClick={savePermissions} disabled={saving || selectedRole.startsWith("default-")}>
                     {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                     Guardar
                   </Button>
@@ -199,7 +309,7 @@ export default function RolesPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {selectedRole ? (
+              {selectedRole && allPerms.length > 0 ? (
                 <div className="space-y-1 max-h-[600px] overflow-y-auto">
                   {modules.map(mod => {
                     const expanded = expandedModules.has(mod);
@@ -244,6 +354,13 @@ export default function RolesPage() {
                     );
                   })}
                 </div>
+              ) : selectedRole ? (
+                <div className="text-center py-12 text-gray-500">
+                  <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-400" />
+                  <p className="font-medium">Permisos no disponibles</p>
+                  <p className="text-sm mt-1">Los permisos se mostrarán cuando el servidor esté disponible.</p>
+                  <p className="text-sm mt-1">Los roles predefinidos ya incluyen los permisos configurados por el sistema.</p>
+                </div>
               ) : (
                 <div className="text-center py-12 text-gray-500">
                   <Shield className="h-12 w-12 mx-auto mb-4 text-gray-300" />
@@ -255,19 +372,20 @@ export default function RolesPage() {
         </div>
       </div>
 
+      {/* Diálogo Crear Rol */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Nuevo Rol</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
-            <div><label className="text-sm font-medium">Nombre *</label>
-              <Input value={newRole.name} onChange={e => setNewRole(p => ({ ...p, name: e.target.value }))} placeholder="Ej: Coordinador" /></div>
+            <div><label className="text-sm font-medium">Nombre interno *</label>
+              <Input value={newRole.name} onChange={e => setNewRole(p => ({ ...p, name: e.target.value }))} placeholder="Ej: coordinador" /></div>
             <div><label className="text-sm font-medium">Nombre para mostrar</label>
               <Input value={newRole.display_name} onChange={e => setNewRole(p => ({ ...p, display_name: e.target.value }))} placeholder="Ej: Coordinador General" /></div>
-            <div><label className="text-sm font-medium">Descripcion</label>
-              <Input value={newRole.description} onChange={e => setNewRole(p => ({ ...p, description: e.target.value }))} /></div>
+            <div><label className="text-sm font-medium">Descripción</label>
+              <Input value={newRole.description} onChange={e => setNewRole(p => ({ ...p, description: e.target.value }))} placeholder="Ej: Coordina operaciones en campo" /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div><label className="text-sm font-medium">Nivel</label>
-                <Input type="number" value={newRole.level} onChange={e => setNewRole(p => ({ ...p, level: e.target.value }))} /></div>
+              <div><label className="text-sm font-medium">Nivel (1-100)</label>
+                <Input type="number" value={newRole.level} onChange={e => setNewRole(p => ({ ...p, level: e.target.value }))} min="1" max="100" /></div>
               <div><label className="text-sm font-medium">Color</label>
                 <Input type="color" value={newRole.color} onChange={e => setNewRole(p => ({ ...p, color: e.target.value }))} /></div>
             </div>
@@ -276,6 +394,35 @@ export default function RolesPage() {
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancelar</Button>
             <Button onClick={createRole} disabled={!newRole.name || saving}>
               {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}Crear Rol
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo Editar Rol */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editar Rol</DialogTitle></DialogHeader>
+          {editingRole && (
+            <div className="space-y-4 py-4">
+              <div><label className="text-sm font-medium">Nombre interno</label>
+                <Input value={editingRole.name} disabled className="bg-gray-50" /></div>
+              <div><label className="text-sm font-medium">Nombre para mostrar</label>
+                <Input value={editingRole.display_name || ""} onChange={e => setEditingRole(p => p ? { ...p, display_name: e.target.value } : null)} /></div>
+              <div><label className="text-sm font-medium">Descripción</label>
+                <Input value={editingRole.description || ""} onChange={e => setEditingRole(p => p ? { ...p, description: e.target.value } : null)} /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-sm font-medium">Nivel (1-100)</label>
+                  <Input type="number" value={editingRole.level} onChange={e => setEditingRole(p => p ? { ...p, level: parseInt(e.target.value) || 0 } : null)} min="1" max="100" /></div>
+                <div><label className="text-sm font-medium">Color</label>
+                  <Input type="color" value={editingRole.color || "#2563EB"} onChange={e => setEditingRole(p => p ? { ...p, color: e.target.value } : null)} /></div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditDialogOpen(false); setEditingRole(null); }}>Cancelar</Button>
+            <Button onClick={updateRole} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}Guardar Cambios
             </Button>
           </DialogFooter>
         </DialogContent>

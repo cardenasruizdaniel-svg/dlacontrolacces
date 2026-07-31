@@ -1,0 +1,14 @@
+Starting project at C:\dev\dla-mobile
+Starting Metro Bundler
+Waiting on http://localhost:8082
+Logs for your project will appear below.
+Web Bundled 41609ms (C:\dev\dla-mobile\index.js)
+Web Bundled 40ms (C:\dev\dla-mobile\index.js)
+Web Bundled 41ms (C:\dev\dla-mobile\index.js)
+Web Bundled 48ms (C:\dev\dla-mobile\index.js)
+Web Bundled 40ms (C:\dev\dla-mobile\index.js)
+Web Bundled 39ms (C:\dev\dla-mobile\index.js)
+Web Bundled 182ms (C:\dev\dla-mobile\index.js)
+Web Bundled 367ms (C:\dev\dla-mobile\index.js)
+Web Bundled 603ms (C:\dev\dla-mobile\index.js)
+Web Bundled 33ms (C:\dev\dla-mobile\index.js)

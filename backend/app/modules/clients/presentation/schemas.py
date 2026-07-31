@@ -2,15 +2,17 @@ from pydantic import BaseModel, model_validator
 
 
 def _clean_optional_strings(values: dict) -> dict:
-    for k, v in values.items():
-        if isinstance(v, str) and v == "":
+    for k, v in list(values.items()):
+        if k == "company_id" and (not v or v == ""):
+            continue
+        if isinstance(v, str) and v.strip() == "":
             values[k] = None
     return values
 
 
 class ClientCreateRequest(BaseModel):
-    company_id: str
-    client_type: str
+    company_id: str | None = None
+    client_type: str = "enterprise"
     nit: str | None = None
     name: str
     trade_name: str | None = None

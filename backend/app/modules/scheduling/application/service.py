@@ -76,6 +76,43 @@ class SchedulingService:
         self.shift_repo = shift_repo
         self.series_repo = series_repo
 
+    def _validate_future_datetime(self, shift_date: date | str, start_time_str: str | None = None) -> date:
+        from datetime import datetime, date as _date, timedelta, timezone
+        now_utc = datetime.now(timezone.utc)
+        now_cot = now_utc - timedelta(hours=5)  # Colombian local time (COT, UTC-5)
+        today_cot = now_cot.date()
+
+        if isinstance(shift_date, str):
+            try:
+                shift_date_val = _date.fromisoformat(shift_date)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Formato de fecha inválido: {shift_date}")
+        else:
+            shift_date_val = shift_date
+
+        if shift_date_val < today_cot:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No se puede programar una visita en una fecha pasada ({shift_date_val.strftime('%d/%m/%Y')}). La fecha mínima permitida es hoy ({today_cot.strftime('%d/%m/%Y')})."
+            )
+
+        if shift_date_val == today_cot and start_time_str:
+            try:
+                sh, sm = map(int, start_time_str.split(":")[:2])
+                current_time = now_cot.time()
+                if (sh, sm) < (current_time.hour, current_time.minute):
+                    now_formatted = now_cot.strftime("%I:%M %p")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"No se puede programar una visita en una hora pasada del día de hoy ({start_time_str}). La hora actual del servidor es {now_formatted}. Debe seleccionar una hora igual o posterior."
+                    )
+            except HTTPException:
+                raise
+            except Exception:
+                pass
+
+        return shift_date_val
+
     # --- Shift Templates ---
 
     async def create_template(self, **kwargs: dict):
@@ -93,15 +130,45 @@ class SchedulingService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shift template not found")
         return await self.template_repo.update(template_id, **kwargs)
 
-    async def delete_template(self, template_id: str) -> None:
+    async def delete_template(self, template_id: str, db: any = None) -> None:
         template = await self.template_repo.get_by_id(template_id)
         if not template:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shift template not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plantilla de turno no encontrada")
+
+        if db:
+            from sqlalchemy import select, func
+            from app.shared.database.models_scheduling import Shift, ScheduleSeries
+
+            shift_count = (await db.execute(select(func.count(Shift.id)).where(Shift.shift_template_id == template_id))).scalar() or 0
+            series_count = (await db.execute(select(func.count(ScheduleSeries.id)).where(ScheduleSeries.shift_template_id == template_id))).scalar() or 0
+
+            total_movements = shift_count + series_count
+            if total_movements > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se puede eliminar la plantilla '{template.name}' porque está vinculada a {total_movements} turnos o series de la programación requeridos para informes. Puede modificar sus parámetros sin borrar el historial."
+                )
+
         await self.template_repo.soft_delete(template_id)
 
     async def list_templates(self, company_id: str, page: int = 1, page_size: int = 100) -> dict:
         skip = (page - 1) * page_size
         items, total = await self.template_repo.list_by_company(company_id, skip=skip, limit=page_size)
+        if not items:
+            default_templates = [
+                {"name": "Turno Mañana", "color": "#3b82f6", "start_time": "07:00", "end_time": "15:00", "duration_hours": 8.0, "shift_type": "morning", "observations": "Turno ordinario diurno"},
+                {"name": "Turno Tarde", "color": "#10b981", "start_time": "15:00", "end_time": "23:00", "duration_hours": 8.0, "shift_type": "afternoon", "observations": "Turno vespertino"},
+                {"name": "Turno Noche", "color": "#8b5cf6", "start_time": "23:00", "end_time": "07:00", "duration_hours": 8.0, "shift_type": "night", "observations": "Turno nocturno recargo Art. 168 CST"},
+                {"name": "Visita Domiciliaria AM", "color": "#06b6d4", "start_time": "08:00", "end_time": "12:00", "duration_hours": 4.0, "shift_type": "home_visit", "observations": "Atención de pacientes domiciliaria mañana"},
+                {"name": "Visita Domiciliaria PM", "color": "#f59e0b", "start_time": "13:00", "end_time": "17:00", "duration_hours": 4.0, "shift_type": "home_visit", "observations": "Atención de pacientes domiciliaria tarde"},
+            ]
+            for dt in default_templates:
+                try:
+                    await self.template_repo.create(company_id=company_id, **dt)
+                except Exception:
+                    pass
+            items, total = await self.template_repo.list_by_company(company_id, skip=skip, limit=page_size)
+
         return {"items": items, "total": total, "page": page, "page_size": page_size,
                 "total_pages": ceil(total / page_size) if total > 0 else 0}
 
@@ -110,10 +177,7 @@ class SchedulingService:
     async def create_schedule(self, **kwargs: dict):
         start_date_val = kwargs.get("start_date")
         if start_date_val:
-            if isinstance(start_date_val, str):
-                start_date_val = date.fromisoformat(start_date_val)
-            if start_date_val < date.today():
-                raise HTTPException(status_code=400, detail="No se pueden programar horarios con fecha de inicio en el pasado")
+            self._validate_future_datetime(start_date_val)
         return await self.schedule_repo.create(**kwargs)
 
     async def get_schedule(self, schedule_id: str):
@@ -145,20 +209,15 @@ class SchedulingService:
     async def create_shift(self, **kwargs: dict):
         shift_date = kwargs.get("shift_date")
         employee_id = kwargs.get("employee_id")
+        start_time = kwargs.get("start_time", "08:00")
+        end_time = kwargs.get("end_time", "17:00")
+
         if shift_date is not None:
-            from datetime import date as _date
-            if isinstance(shift_date, str):
-                shift_date_val = _date.fromisoformat(shift_date)
-            else:
-                shift_date_val = shift_date
-            if shift_date_val < _date.today():
-                raise HTTPException(status_code=400, detail="No se pueden programar turnos en fechas pasadas")
+            shift_date_val = self._validate_future_datetime(shift_date, start_time)
         else:
             shift_date_val = None
 
         if employee_id and shift_date_val:
-            start_time = kwargs.get("start_time", "08:00")
-            end_time = kwargs.get("end_time", "17:00")
             break_minutes = kwargs.get("break_minutes", 60)
             validation = await self.validate_shift(employee_id, shift_date_val, start_time, end_time, break_minutes)
             if not validation["valid"]:
@@ -179,16 +238,23 @@ class SchedulingService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shift not found")
 
         employee_id = kwargs.get("employee_id", shift.employee_id)
-        shift_date_val = kwargs.get("shift_date")
-        if shift_date_val is not None:
+        shift_date = kwargs.get("shift_date")
+        start_time = kwargs.get("start_time", shift.start_time)
+        end_time = kwargs.get("end_time", shift.end_time)
+
+        if shift_date is not None or start_time is not None:
+            eval_date = shift_date or shift.shift_date
+            self._validate_future_datetime(eval_date, start_time)
+
+        if shift_date is not None:
             from datetime import date as _date
-            if isinstance(shift_date_val, str):
-                shift_date_val = _date.fromisoformat(shift_date_val)
+            if isinstance(shift_date, str):
+                shift_date_val = _date.fromisoformat(shift_date)
+            else:
+                shift_date_val = shift_date
         else:
             shift_date_val = shift.shift_date if isinstance(shift.shift_date, date) else date.fromisoformat(str(shift.shift_date)) if shift.shift_date else None
 
-        start_time = kwargs.get("start_time", shift.start_time)
-        end_time = kwargs.get("end_time", shift.end_time)
         break_minutes = kwargs.get("break_minutes", shift.break_minutes or 60)
 
         if employee_id and shift_date_val and start_time and end_time:
@@ -300,6 +366,16 @@ class SchedulingService:
                 continue
             try:
                 shift_date_val = date.fromisoformat(ev["shift_date"])
+                self._validate_future_datetime(shift_date_val, ev.get("start_time"))
+            except HTTPException as exc:
+                conflicts.append({
+                    "type": "past_datetime",
+                    "message": exc.detail,
+                    "conflicting_shift_id": None,
+                    "employee_id": ev.get("employee_id"),
+                    "date": ev.get("shift_date"),
+                })
+                continue
             except (ValueError, KeyError):
                 continue
             result = await self.validate_shift(
@@ -335,12 +411,10 @@ class SchedulingService:
                 continue
             ev_date_val = ev.get("shift_date")
             if ev_date_val:
-                from datetime import date as _date
-                if isinstance(ev_date_val, str):
-                    ev_date_obj = _date.fromisoformat(ev_date_val)
-                else:
-                    ev_date_obj = ev_date_val
-                if ev_date_obj < _date.today():
+                try:
+                    self._validate_future_datetime(ev_date_val, ev.get("start_time"))
+                except HTTPException:
+                    skipped += 1
                     continue
             shifts_data.append({
                 "schedule_id": schedule_id,
@@ -363,7 +437,7 @@ class SchedulingService:
         await self.shift_repo.bulk_create(shifts_data)
         msg = f"{len(shifts_data)} turno(s) creado(s) exitosamente."
         if skipped > 0:
-            msg += f" {skipped} evento(s) sin empleado omitido(s)."
+            msg += f" {skipped} evento(s) omitido(s)."
         return {"success": True, "created": len(shifts_data), "conflicts": [], "message": msg}
 
     # --- Series CRUD (Recurring Events) ---
@@ -373,10 +447,7 @@ class SchedulingService:
             raise HTTPException(status_code=500, detail="Series repository not configured")
         start_date_val = kwargs.get("start_date")
         if start_date_val:
-            if isinstance(start_date_val, str):
-                start_date_val = date.fromisoformat(start_date_val)
-            if start_date_val < date.today():
-                raise HTTPException(status_code=400, detail="No se pueden crear series con fecha de inicio en el pasado")
+            self._validate_future_datetime(start_date_val, kwargs.get("default_start_time"))
         return await self.series_repo.create(**kwargs)
 
     async def get_series(self, series_id: str):

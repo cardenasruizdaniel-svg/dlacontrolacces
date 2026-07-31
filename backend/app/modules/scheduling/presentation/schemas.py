@@ -1,3 +1,4 @@
+from __future__ import annotations
 from pydantic import BaseModel
 
 
@@ -86,6 +87,29 @@ class ScheduleListResponse(BaseModel):
     total_pages: int
 
 
+class ShiftResponse(BaseModel):
+    id: str
+    schedule_id: str
+    employee_id: str
+    client_id: str | None = None
+    persona_id: str | None = None
+    project_id: str | None = None
+    shift_template_id: str | None = None
+    name: str
+    color: str
+    shift_date: str
+    start_time: str
+    end_time: str
+    break_minutes: int
+    priority: str
+    status: str
+    notes: str | None = None
+    observations: str | None = None
+    employee_name: str | None = None
+    client_name: str | None = None
+    persona_name: str | None = None
+
+
 class ShiftListResponse(BaseModel):
     items: list[ShiftResponse]
     total: int
@@ -125,29 +149,6 @@ class ShiftUpdateRequest(BaseModel):
     notes: str | None = None
     observations: str | None = None
     status: str | None = None
-
-
-class ShiftResponse(BaseModel):
-    id: str
-    schedule_id: str
-    employee_id: str
-    client_id: str | None = None
-    persona_id: str | None = None
-    project_id: str | None = None
-    shift_template_id: str | None = None
-    name: str
-    color: str
-    shift_date: str
-    start_time: str
-    end_time: str
-    break_minutes: int
-    priority: str
-    status: str
-    notes: str | None = None
-    observations: str | None = None
-    employee_name: str | None = None
-    client_name: str | None = None
-    persona_name: str | None = None
 
 
 class BulkShiftItem(BaseModel):

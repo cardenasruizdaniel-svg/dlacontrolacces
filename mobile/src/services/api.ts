@@ -1,17 +1,7 @@
-import { Platform } from "react-native";
 import axios from "axios";
 import SecureStore from "./storage";
 
-const API_PORT = 8888;
-
-function getApiUrl(): string {
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    return `${window.location.protocol}//${window.location.hostname}:${API_PORT}/api/v1`;
-  }
-  return `http://10.0.2.2:${API_PORT}/api/v1`;
-}
-
-const API_URL = getApiUrl();
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://dla-access-backend.onrender.com/api/v1";
 
 const api = axios.create({
   baseURL: API_URL,

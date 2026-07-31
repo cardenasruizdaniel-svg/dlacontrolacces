@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import { FileText, Table, BarChart3, Download, Users, DollarSign, Clock } from "lucide-react";
 
 const reports = [
-  { title: "Reporte de N\u00f3mina", description: "N\u00f3mina detallada por per\u00edodo con desglose completo", icon: DollarSign, color: "text-green-600" },
+  { title: "Reporte de Nómina", description: "Nómina detallada por período con desglose completo", icon: DollarSign, color: "text-green-600" },
   { title: "Reporte de Asistencia", description: "Registro de entrada/salida por empleado", icon: Clock, color: "text-blue-600" },
   { title: "Reporte de Empleados", description: "Listado completo del personal activo", icon: Users, color: "text-purple-600" },
-  { title: "Productividad", description: "An\u00e1lisis de productividad y cumplimiento", icon: BarChart3, color: "text-yellow-600" },
+  { title: "Productividad", description: "Análisis de productividad y cumplimiento", icon: BarChart3, color: "text-yellow-600" },
   { title: "Contratos", description: "Estado de contratos laborales", icon: FileText, color: "text-red-600" },
-  { title: "Accesos", description: "Historial de accesos y geolocalizaci\u00f3n", icon: Table, color: "text-indigo-600" },
+  { title: "Accesos", description: "Historial de accesos y geolocalización", icon: Table, color: "text-indigo-600" },
 ];
 
 export default function ReportsPage() {
@@ -19,7 +19,7 @@ export default function ReportsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Reportes</h1>
-          <p className="text-muted-foreground">Generaci\u00f3n de reportes en PDF, Excel y Power BI Ready</p>
+          <p className="text-muted-foreground">Generación de reportes en PDF, Excel y Power BI Ready</p>
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

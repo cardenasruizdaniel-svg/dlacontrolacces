@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from app.core.deps import CurrentUser, DbSession, get_current_user
 from app.modules.auth.application.service import AuthService
 from app.modules.auth.infrastructure.repositories import (
@@ -34,34 +34,37 @@ def get_auth_service(db: DbSession) -> AuthService:
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest, request: Request, db: DbSession,
                 platform: str = Query("web")) -> TokenResponse:
-    # Rate limiting
-    client_ip = request.client.host if request.client else "unknown"
-    from app.main import login_limiter
-    if await login_limiter.is_rate_limited(f"login:{client_ip}"):
-        from fastapi import HTTPException
-        raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
-    if await login_limiter.is_rate_limited(f"login:{body.email}"):
-        from fastapi import HTTPException
-        raise HTTPException(status_code=429, detail="Too many login attempts for this account.")
-    logger.info(f"Login attempt: email={body.email!r} ip={client_ip} platform={platform}")
-    service = get_auth_service(db)
-    result = await service.login(
-        email=body.email,
-        password=body.password,
-        platform=platform,
-        ip_address=client_ip,
-        user_agent=request.headers.get("user-agent"),
-    )
-    if result.get("user"):
-        logger.info(f"Login success: user={result['user'].get('email')}")
-    return TokenResponse(**result)
+    try:
+        # Rate limiting
+        client_ip = request.client.host if request.client else "unknown"
+        from app.main import login_limiter
+        if login_limiter.is_rate_limited(f"login:{client_ip}"):
+            raise HTTPException(status_code=429, detail="Demasiados intentos de inicio de sesión.")
+        if login_limiter.is_rate_limited(f"login:{body.email}"):
+            raise HTTPException(status_code=429, detail="Demasiados intentos para esta cuenta.")
+        logger.info(f"Login attempt: email={body.email!r} ip={client_ip} platform={platform}")
+        service = get_auth_service(db)
+        result = await service.login(
+            email=body.email,
+            password=body.password,
+            platform=platform,
+            ip_address=client_ip,
+            user_agent=request.headers.get("user-agent"),
+        )
+        if result.get("user"):
+            logger.info(f"Login success: user={result['user'].get('email')}")
+        return TokenResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"UNHANDLED LOGIN ERROR: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error en inicio de sesión: {str(e)}")
 
 
 @router.post("/register", response_model=TokenResponse)
 async def register(body: RegisterRequest, request: Request, db: DbSession, current_user: CurrentUser) -> TokenResponse:
     """Register a new user. Requires admin authentication."""
     if not current_user.is_superuser:
-        from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Only superusers can create new accounts")
     service = get_auth_service(db)
     result = await service.register(
@@ -85,8 +88,8 @@ async def verify_mfa(body: MFAVerifyRequest, db: DbSession) -> TokenResponse:
 
 
 @router.post("/mfa/enable", response_model=MFAEnableResponse)
-async def enable_mfa(current_user: CurrentUser) -> MFAEnableResponse:
-    service = get_auth_service(current_user._sa_session)
+async def enable_mfa(current_user: CurrentUser, db: DbSession) -> MFAEnableResponse:
+    service = get_auth_service(db)
     result = await service.enable_mfa(current_user.id)
     return MFAEnableResponse(**result)
 

@@ -1,66 +1,124 @@
 "use client";
 import React, { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { useIsMobile } from "@/hooks/useMediaQuery";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
-import BottomNav from "@/components/layout/BottomNav";
+import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import { Skeleton } from "@/components/ui/skeleton";
-import { WifiOff, AlertTriangle } from "lucide-react";
-
-function OfflineBanner() {
-  const online = useOnlineStatus();
-  if (online) return null;
-  return (
-    <div className="flex items-center justify-center gap-2 bg-destructive/10 text-destructive text-xs font-medium py-1.5 px-4 border-b border-destructive/20">
-      <WifiOff className="h-3.5 w-3.5" />
-      <span>Sin conexión — Los cambios se sincronizarán cuando recupere conectividad</span>
-    </div>
-  );
-}
+import { Loader2, Smartphone } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, loadUser } = useAuthStore();
+  const { user, isAuthenticated, isLoading, loadUser } = useAuthStore();
   const router = useRouter();
-  const isMobile = useIsMobile();
+  const pathname = usePathname();
 
-  useEffect(() => { loadUser(); }, [loadUser]);
+  const isAttendanceKiosk = pathname === "/attendance" || pathname?.startsWith("/attendance/");
+  const isMobilePWA = pathname === "/mobile" || pathname?.startsWith("/mobile/");
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) router.push("/login");
-  }, [isLoading, isAuthenticated, router]);
+    loadUser();
+  }, [loadUser]);
 
+  useEffect(() => {
+    // Bypasses login check for public attendance kiosk station (/attendance)
+    if (isAttendanceKiosk) return;
+
+    if (!isLoading && !isAuthenticated) {
+      const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+      if (currentPath && currentPath !== "/" && currentPath !== "/login") {
+        router.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
+      } else {
+        router.push("/login?redirect=%2Fdashboard");
+      }
+      return;
+    }
+
+    // Strict PWA Isolation: Mobile platform employees are restricted from accessing ERP Web routes
+    if (!isLoading && isAuthenticated && user) {
+      const platformAccess = (user as any)?.platform_access;
+      if (platformAccess === "mobile" && !isMobilePWA && !isAttendanceKiosk) {
+        router.push("/mobile");
+      }
+    }
+  }, [isLoading, isAuthenticated, user, pathname, router, isAttendanceKiosk, isMobilePWA]);
+
+  // 1. PUBLIC KIOSK MODE (/attendance): Standalone full-screen without auth or web ERP layout
+  if (isAttendanceKiosk) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 overflow-y-auto">
+        {children}
+      </div>
+    );
+  }
+
+  // 2. FIELD PWA MODE (/mobile): Standalone PWA view (handles its own mobile loading and layout without desktop skeleton)
+  if (isMobilePWA) {
+    if (isLoading) {
+      return (
+        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 space-y-4 text-center">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg">
+            <Smartphone className="h-6 w-6 animate-pulse" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold">DLA Access Mobile</h3>
+            <p className="text-xs text-muted-foreground">Cargando aplicación PWA de campo...</p>
+          </div>
+          <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    if (!isAuthenticated) {
+      return (
+        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 space-y-3 text-center">
+          <p className="text-sm font-semibold text-muted-foreground">Redirigiendo al inicio de sesión PWA...</p>
+          <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-background overflow-y-auto pb-20">
+        {children}
+        <MobileBottomNav />
+      </div>
+    );
+  }
+
+  // 3. DESKTOP ERP WEB MODE: Full ERP layout with Sidebar and Header
   if (isLoading) {
     return (
       <div className="flex h-screen">
-        <div className="hidden md:flex w-64 border-r p-4 space-y-4">
+        <div className="hidden md:block w-64 border-r p-4 space-y-4">
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-4 w-3/4" />
           <Skeleton className="h-4 w-1/2" />
-          <Skeleton className="h-4 w-2/3" />
         </div>
-        <div className="flex-1 p-4 md:p-6 space-y-4">
-          <Skeleton className="h-6 w-1/2 md:h-10 md:w-1/3" />
-          <Skeleton className="h-48 w-full md:h-64" />
+        <div className="flex-1 p-6 space-y-4">
+          <Skeleton className="h-10 w-1/3" />
+          <Skeleton className="h-64 w-full" />
         </div>
       </div>
     );
   }
 
-  if (!isAuthenticated) return <div className="flex h-screen items-center justify-center text-muted-foreground">Redirigiendo al inicio de sesión...</div>;
+  if (!isAuthenticated) {
+    return (
+      <div className="flex h-screen items-center justify-center text-muted-foreground text-sm">
+        Redirigiendo al inicio de sesión...
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {!isMobile && <Sidebar />}
+      <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        <OfflineBanner />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-muted/30 pb-20 md:pb-6">
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6 bg-muted/30">
           {children}
         </main>
-        {isMobile && <BottomNav />}
       </div>
     </div>
   );

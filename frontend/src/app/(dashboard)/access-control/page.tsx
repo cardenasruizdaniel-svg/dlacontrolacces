@@ -10,7 +10,7 @@ export default function AccessControlPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Control de Acceso</h1>
-        <p className="text-muted-foreground">Registro biom\u00e9trico de entrada/salida con geolocalizaci\u00f3n</p>
+        <p className="text-muted-foreground">Registro biométrico de entrada/salida con geolocalización</p>
       </div>
       <div className="grid gap-4 md:grid-cols-4">
         <Card><CardContent className="p-6 flex items-center gap-4">
@@ -31,13 +31,13 @@ export default function AccessControlPage() {
         </CardContent></Card>
       </div>
       <Card>
-        <CardHeader><CardTitle>Registro de Accesos de Hoy</CardTitle><CardDescription>Historial de entradas y salidas del d\u00eda actual</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registro de Accesos de Hoy</CardTitle><CardDescription>Historial de entradas y salidas del día actual</CardDescription></CardHeader>
         <CardContent>
           <div className="space-y-3">
             <div className="text-center py-12 text-muted-foreground">
               <Shield className="h-16 w-16 mx-auto mb-4 opacity-50" />
               <p className="text-lg font-medium">Sin registros hoy</p>
-              <p className="text-sm">Los registros de acceso aparecer\u00e1n aqu\u00ed cuando los trabajadores inicien/cierren sesi\u00f3n desde la App m\u00f3vil</p>
+              <p className="text-sm">Los registros de acceso aparecerán aquí cuando los trabajadores inicien/cierren sesión desde la App móvil</p>
             </div>
           </div>
         </CardContent>

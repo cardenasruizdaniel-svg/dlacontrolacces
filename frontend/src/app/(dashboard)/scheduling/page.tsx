@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Save, AlertTriangle, Calendar, Clock, Users, Trash2, Loader2, ChevronLeft, ChevronRight, GripVertical, Copy, X, CheckCircle, AlertCircle } from "lucide-react";
+import { Plus, Save, AlertTriangle, Calendar, Clock, Users, Trash2, Loader2, ChevronLeft, ChevronRight, GripVertical, Copy, X, CheckCircle, AlertCircle, Pencil } from "lucide-react";
 import { toLocalDateStr } from "@/lib/utils";
 
 type ViewMode = "day" | "week" | "month" | "agenda";
@@ -59,11 +59,40 @@ const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Juli
 
 function uid(): string { return Math.random().toString(36).slice(2, 10); }
 
+function isDateOrTimePast(dateStr: string, timeStr?: string): { isPast: boolean; message: string } {
+  if (!dateStr) return { isPast: false, message: "" };
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${year}-${month}-${day}`;
+
+  if (dateStr < todayStr) {
+    return {
+      isPast: true,
+      message: `La fecha ${dateStr} ya transcurrió. Solo se permite programar desde hoy (${todayStr}) en adelante.`
+    };
+  }
+
+  if (dateStr === todayStr && timeStr) {
+    const [sh, sm] = timeStr.split(":").slice(0, 2).map(Number);
+    const selectedMinutes = sh * 60 + sm;
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    if (selectedMinutes < currentMinutes) {
+      const nowFormatted = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return {
+        isPast: true,
+        message: `La hora ${timeStr} del día de hoy ya transcurrió. La hora actual del servidor es ${nowFormatted}. Debe seleccionar una hora igual o posterior.`
+      };
+    }
+  }
+
+  return { isPast: false, message: "" };
+}
+
 function isDatePast(dateStr: string): boolean {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(dateStr + "T00:00:00");
-  return target < today;
+  return isDateOrTimePast(dateStr).isPast;
 }
 
 function timesOverlap(start1: string, end1: string, start2: string, end2: string): boolean {
@@ -98,7 +127,10 @@ function findConflictsForEmployee(
   return conflicts;
 }
 
+import { useRouter } from "next/navigation";
+
 export default function SchedulingPage() {
+  const router = useRouter();
   const [view, setView] = useState<ViewMode>("week");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [templates, setTemplates] = useState<any[]>([]);
@@ -137,8 +169,16 @@ export default function SchedulingPage() {
   const [deletingShift, setDeletingShift] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<any | null>(null);
   const [templateForm, setTemplateForm] = useState({ name: "", color: "#3b82f6", start_time: "08:00", end_time: "17:00", shift_type: "regular", observations: "" });
+  const [clientSearchQuery, setClientSearchQuery] = useState("");
   const todayStr = toLocalDateStr();
+
+  const filteredClients = useMemo(() => {
+    if (!clientSearchQuery.trim()) return clients;
+    const q = clientSearchQuery.toLowerCase();
+    return clients.filter((c) => (c.name || "").toLowerCase().includes(q) || (c.nit || "").toLowerCase().includes(q) || (c.city || "").toLowerCase().includes(q));
+  }, [clients, clientSearchQuery]);
 
   const addToast = useCallback((message: string, type: Toast["type"] = "error") => {
     const id = uid();
@@ -148,15 +188,15 @@ export default function SchedulingPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const companyId = localStorage.getItem("company_id") || "";
+      const companyId = (typeof window !== "undefined" ? localStorage.getItem("company_id") : null) || "dla-company-main";
       const [tRes, eRes, cRes] = await Promise.allSettled([
         api.get(`/scheduling/templates?company_id=${companyId}`),
-        api.get(`/employees?company_id=${companyId}&page_size=100`),
-        api.get(`/clients?company_id=${companyId}&page_size=100`),
+        api.get(`/employees?company_id=${companyId}&page_size=1000`),
+        api.get(`/clients?company_id=${companyId}&page_size=1000`),
       ]);
-      if (tRes.status === "fulfilled") setTemplates(tRes.value.data.items || []);
-      if (eRes.status === "fulfilled") setEmployees(eRes.value.data.items || []);
-      if (cRes.status === "fulfilled") setClients(cRes.value.data.items || []);
+      if (tRes.status === "fulfilled") setTemplates(tRes.value.data.items || tRes.value.data || []);
+      if (eRes.status === "fulfilled") setEmployees(eRes.value.data.items || eRes.value.data || []);
+      if (cRes.status === "fulfilled") setClients(cRes.value.data.items || cRes.value.data || []);
     } catch (e) { console.error("Failed to load scheduling data:", e); }
     setLoading(false);
   }, []);
@@ -165,9 +205,9 @@ export default function SchedulingPage() {
 
   const loadSeries = useCallback(async () => {
     try {
-      const companyId = localStorage.getItem("company_id") || "";
-      const res = await api.get(`/scheduling/series?company_id=${companyId}&page_size=100`);
-      setSeries(res.data.items || []);
+      const companyId = (typeof window !== "undefined" ? localStorage.getItem("company_id") : null) || "dla-company-main";
+      const res = await api.get(`/scheduling/series?company_id=${companyId}&page_size=1000`);
+      setSeries(res.data.items || res.data || []);
     } catch (e) { console.error("Failed to load series:", e); }
   }, []);
 
@@ -222,33 +262,80 @@ export default function SchedulingPage() {
     }
   }, [form.shift_template_id, templates]);
 
-  const handleCreateTemplate = async () => {
+  const openEditTemplate = (t: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingTemplate(t);
+    setTemplateForm({
+      name: t.name || "",
+      color: t.color || "#3b82f6",
+      start_time: t.start_time || "08:00",
+      end_time: t.end_time || "17:00",
+      shift_type: t.shift_type || "regular",
+      observations: t.observations || "",
+    });
+    setTemplateDialogOpen(true);
+  };
+
+  const handleDeleteTemplate = async (t: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`¿Está seguro de eliminar la plantilla "${t.name}"?`)) return;
+    try {
+      await api.delete(`/scheduling/templates/${t.id}`);
+      addToast(`Plantilla "${t.name}" eliminada correctamente`, "success");
+      loadData();
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      const errMsg = typeof detail === "string" ? detail : "No fue posible eliminar la plantilla.";
+      addToast(errMsg, "error");
+    }
+  };
+
+  const handleSaveTemplate = async () => {
     if (!templateForm.name || !templateForm.start_time || !templateForm.end_time) return;
     setCreatingTemplate(true);
     try {
-      const companyId = localStorage.getItem("company_id") || "";
+      const companyId = localStorage.getItem("company_id") || "dla-company-main";
       const [sh, sm] = templateForm.start_time.split(":").map(Number);
       const [eh, em] = templateForm.end_time.split(":").map(Number);
       const durationHours = Math.max(((eh * 60 + em) - (sh * 60 + sm)) / 60, 0.5);
-      await api.post("/scheduling/templates", {
-        company_id: companyId, name: templateForm.name, color: templateForm.color,
-        start_time: templateForm.start_time, end_time: templateForm.end_time,
-        duration_hours: durationHours, shift_type: templateForm.shift_type,
+      const payload = {
+        company_id: companyId,
+        name: templateForm.name,
+        color: templateForm.color,
+        start_time: templateForm.start_time,
+        end_time: templateForm.end_time,
+        duration_hours: durationHours,
+        shift_type: templateForm.shift_type,
         observations: templateForm.observations || null,
-      });
+      };
+
+      if (editingTemplate) {
+        await api.put(`/scheduling/templates/${editingTemplate.id}`, payload);
+        addToast(`Plantilla "${templateForm.name}" actualizada correctamente`, "success");
+      } else {
+        await api.post("/scheduling/templates", payload);
+        addToast(`Plantilla "${templateForm.name}" creada correctamente`, "success");
+      }
+
       setTemplateDialogOpen(false);
+      setEditingTemplate(null);
       setTemplateForm({ name: "", color: "#3b82f6", start_time: "08:00", end_time: "17:00", shift_type: "regular", observations: "" });
       loadData();
-      addToast("Plantilla creada correctamente", "success");
     } catch (e: any) {
-      addToast("Error al crear plantilla: " + (e?.response?.data?.detail || e?.message || "Error desconocido"), "error");
+      const detail = e?.response?.data?.detail;
+      const errMsg = typeof detail === "string" ? detail : "Error al guardar plantilla";
+      addToast(errMsg, "error");
     }
     setCreatingTemplate(false);
   };
 
   const addPendingEvent = () => {
     if (!form.employee_id || !form.shift_date || !form.name) return;
-    if (isDatePast(form.shift_date)) { addToast("No se puede programar en días ya pasados", "warning"); return; }
+    const checkPast = isDateOrTimePast(form.shift_date, form.start_time);
+    if (checkPast.isPast) {
+      addToast(checkPast.message, "error");
+      return;
+    }
     const emp = employees.find((e) => e.id === form.employee_id);
     const cli = clients.find((c) => c.id === form.client_id);
     const per = personas.find((p) => p.id === form.persona_id);
@@ -313,9 +400,11 @@ export default function SchedulingPage() {
 
   const handleBulkSave = async () => {
     if (pendingEvents.length === 0) return;
-    const pastEvents = pendingEvents.filter((e) => isDatePast(e.shift_date));
+    const pastEvents = pendingEvents.filter((e) => isDateOrTimePast(e.shift_date, e.start_time).isPast);
     if (pastEvents.length > 0) {
-      addToast(`Hay ${pastEvents.length} evento(s) en días pasados. Elimínelos antes de guardar.`, "warning");
+      const firstPast = pastEvents[0];
+      const checkMsg = isDateOrTimePast(firstPast.shift_date, firstPast.start_time).message;
+      addToast(`Hay ${pastEvents.length} evento(s) en fecha u hora pasada. ${checkMsg}`, "error");
       return;
     }
     const missingEmployee = pendingEvents.filter((e) => !e.employee_id);
@@ -359,6 +448,11 @@ export default function SchedulingPage() {
 
   const handleCreateSeries = async () => {
     if (!seriesForm.name || !seriesForm.employee_id || !seriesForm.start_date) return;
+    const checkPast = isDateOrTimePast(seriesForm.start_date, seriesForm.default_start_time);
+    if (checkPast.isPast) {
+      addToast(checkPast.message, "error");
+      return;
+    }
     try {
       const companyId = localStorage.getItem("company_id") || "";
       await api.post("/scheduling/series", { company_id: companyId, ...seriesForm,
@@ -562,8 +656,8 @@ export default function SchedulingPage() {
         <div className="flex items-center gap-3">
           <Calendar className="h-6 w-6 text-primary" />
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Programación</h1>
-            <p className="text-xs text-muted-foreground">Planificador visual de turnos y visitas</p>
+            <h1 className="text-2xl font-bold tracking-tight">Programación de Turnos</h1>
+            <p className="text-xs text-muted-foreground">Planificación horaria, rotaciones y asignación de personal</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -869,10 +963,17 @@ export default function SchedulingPage() {
           <Card className="flex-1 flex flex-col min-h-0">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center justify-between">
-                Plantillas
-                <Button variant="ghost" size="sm" className="h-6 px-1.5" onClick={() => setTemplateDialogOpen(true)}><Plus className="h-3 w-3" /></Button>
+                <span>Plantillas</span>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" className="h-6 px-1 text-[10px] text-blue-600 hover:text-blue-700 font-semibold" onClick={() => router.push("/scheduling/templates")} title="Gestionar Catálogo Completo">
+                    Catálogo
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-6 px-1.5" onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", color: "#3b82f6", start_time: "08:00", end_time: "17:00", shift_type: "regular", observations: "" }); setTemplateDialogOpen(true); }} title="Nueva Plantilla">
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
               </CardTitle>
-              <p className="text-[10px] text-muted-foreground">Arrastre al calendario</p>
+              <p className="text-[10px] text-muted-foreground">Arrastre al calendario o gestione</p>
             </CardHeader>
             <CardContent className="flex-1 overflow-y-auto p-2 space-y-1">
               {templates.length === 0 ? (
@@ -880,14 +981,22 @@ export default function SchedulingPage() {
               ) : (
                 templates.map((t) => (
                   <div key={t.id} draggable onDragStart={(e) => handleDragStartTemplate(e, t.id)}
-                    className="flex items-center gap-2 text-xs p-1.5 rounded hover:bg-muted/50 cursor-grab active:cursor-grabbing border border-transparent hover:border-primary/30 transition-colors"
+                    className="flex items-center gap-1.5 text-xs p-1.5 rounded hover:bg-muted/50 cursor-grab active:cursor-grabbing border border-transparent hover:border-primary/30 transition-colors group/tmpl"
                     title={`Arrastrar "${t.name}" al calendario`}>
                     <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{t.name}</p>
+                      <p className="font-medium truncate text-[11px]">{t.name}</p>
                       <p className="text-[10px] text-muted-foreground">{t.start_time}-{t.end_time}</p>
                     </div>
-                    <GripVertical className="h-3 w-3 text-muted-foreground/50" />
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover/tmpl:opacity-100 transition-opacity">
+                      <button onClick={(e) => openEditTemplate(t, e)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-blue-600" title="Editar plantilla">
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                      <button onClick={(e) => handleDeleteTemplate(t, e)} className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950 rounded text-rose-600" title="Eliminar plantilla">
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <GripVertical className="h-3 w-3 text-muted-foreground/50 shrink-0" />
                   </div>
                 ))
               )}
@@ -985,12 +1094,29 @@ export default function SchedulingPage() {
                   {employees.map((e) => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
                 </select>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Cliente</label>
-                <select className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value={form.client_id} onChange={(e) => setForm({ ...form, client_id: e.target.value })}>
-                  <option value="">Sin cliente</option>
-                  {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Cliente / Sede *</label>
+                  {clients.length > 0 && (
+                    <span className="text-[10px] text-muted-foreground font-semibold">{filteredClients.length} / {clients.length} sedes</span>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Input
+                    placeholder="🔍 Buscar cliente o sede por nombre..."
+                    value={clientSearchQuery}
+                    onChange={(e) => setClientSearchQuery(e.target.value)}
+                    className="h-8 text-xs bg-slate-50 dark:bg-slate-900 border-blue-200"
+                  />
+                  <select className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm font-semibold" value={form.client_id} onChange={(e) => setForm({ ...form, client_id: e.target.value })}>
+                    <option value="">-- Sin cliente especifico (Sede general) --</option>
+                    {filteredClients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        🏢 {c.name} {c.city ? `(${c.city})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -1176,11 +1302,11 @@ export default function SchedulingPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Create Template Dialog */}
+      {/* Create / Edit Template Dialog */}
       <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Crear Plantilla de Turno</DialogTitle>
+            <DialogTitle>{editingTemplate ? `Editar Plantilla de Turno (${editingTemplate.name})` : "Crear Plantilla de Turno"}</DialogTitle>
             <DialogDescription>Defina un modelo reutilizable de horario para asignar a empleados.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1219,10 +1345,10 @@ export default function SchedulingPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setTemplateDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleCreateTemplate} disabled={creatingTemplate || !templateForm.name}>
-              {creatingTemplate ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Plus className="mr-1 h-3 w-3" />}
-              Crear Plantilla
+            <Button variant="outline" onClick={() => { setTemplateDialogOpen(false); setEditingTemplate(null); }}>Cancelar</Button>
+            <Button onClick={handleSaveTemplate} disabled={creatingTemplate || !templateForm.name}>
+              {creatingTemplate ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : editingTemplate ? <Pencil className="mr-1 h-3 w-3" /> : <Plus className="mr-1 h-3 w-3" />}
+              {editingTemplate ? "Guardar Cambios" : "Crear Plantilla"}
             </Button>
           </DialogFooter>
         </DialogContent>

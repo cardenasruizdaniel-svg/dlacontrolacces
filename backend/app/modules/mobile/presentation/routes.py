@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta, timezone
 import logging
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select, update as sa_update
 from sqlalchemy.orm import selectinload
@@ -19,30 +19,58 @@ router = APIRouter(prefix="/mobile", tags=["Mobile"])
 
 
 async def _get_employee(db: DbSession, current_user: CurrentUser) -> Employee | None:
-    emp_id = getattr(current_user, "id", None)
+    # 1. Match by employee_id stored on current_user
+    emp_id = getattr(current_user, "employee_id", None)
     if emp_id:
         result = await db.execute(
             select(Employee).where(
                 Employee.id == emp_id,
-                Employee.company_id == current_user.company_id,
                 Employee.is_deleted == False,
             )
         )
         emp = result.scalar_one_or_none()
         if emp:
             return emp
+
+    # 2. Match by email
     email = getattr(current_user, "email", None)
     if email:
         result = await db.execute(
             select(Employee).where(
-                Employee.company_id == current_user.company_id,
-                Employee.email == email,
+                func.lower(Employee.email) == email.lower(),
                 Employee.is_deleted == False,
             )
         )
         emp = result.scalar_one_or_none()
         if emp:
             return emp
+
+    # 3. Match by user_id
+    user_id = getattr(current_user, "id", None)
+    if user_id:
+        result = await db.execute(
+            select(Employee).where(
+                (Employee.id == user_id) | (Employee.user_id == user_id),
+                Employee.is_deleted == False,
+            )
+        )
+        emp = result.scalar_one_or_none()
+        if emp:
+            return emp
+
+    # 4. Match by document_number or code if username is passed
+    username = getattr(current_user, "username", None) or getattr(current_user, "code", None)
+    if username:
+        result = await db.execute(
+            select(Employee).where(
+                (Employee.document_number == username) | (Employee.code == username),
+                Employee.is_deleted == False,
+            )
+        )
+        emp = result.scalar_one_or_none()
+        if emp:
+            return emp
+
     return None
 
 
@@ -55,14 +83,351 @@ async def get_my_employee(current_user: CurrentUser, db: DbSession):
         "id": emp.id, "code": emp.code, "first_name": emp.first_name,
         "last_name": emp.last_name, "email": emp.email, "phone": emp.phone,
         "mobile": emp.mobile, "address": emp.address, "city": emp.city,
+        "neighborhood": getattr(emp, "department_loc", None) or getattr(emp, "city", None),
         "status": emp.status, "photo_url": emp.photo_url,
+        "signature_url": getattr(emp, "signature_url", None),
         "document_type": emp.document_type, "document_number": emp.document_number,
         "company_id": emp.company_id, "department_id": emp.department_id,
         "job_position_id": emp.job_position_id,
+        "job_position": emp.job_position.name if getattr(emp, "job_position", None) else "Operador de Campo",
+        "company_name": emp.company.name if getattr(emp, "company", None) else "DLA Redes y Seguridad",
         "hire_date": str(emp.hire_date) if emp.hire_date else None,
-        "eps": emp.eps, "arl": emp.arl, "afp": emp.afp,
+        "eps": emp.eps or "EPS Sura",
+        "arl": emp.arl or "Positiva ARL",
+        "afp": emp.afp or "Porvenir S.A.",
+        "caja_compensacion": getattr(emp, "caja_compensacion", None) or "Comfama",
+        "emergency_contact_name": emp.emergency_contact_name,
+        "emergency_contact_phone": emp.emergency_contact_phone,
+        "emergency_contact_relation": emp.emergency_contact_relation,
         "can_assign_georeference": emp.can_assign_georeference,
     }
+
+
+class ReferencePhotoPayload(BaseModel):
+    photo_base64: str
+
+
+class ReferencePhotoPayload(BaseModel):
+    photo_base64: str
+
+
+@router.post("/me/reference-photo")
+async def register_reference_photo(
+    body: ReferencePhotoPayload,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    emp = await _get_employee(db, current_user)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+
+    if emp.photo_url and emp.photo_url.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="La foto de referencia biométrica ya fue registrada previamente y está protegida por seguridad. Para cualquier actualización o reemplazo de la foto, debe realizarse por un Administrador en el ERP Web."
+        )
+
+    emp.photo_url = body.photo_base64
+    emp.is_face_registered = True
+    await db.commit()
+    await db.refresh(emp)
+    return {
+        "status": "success",
+        "message": "Fotografía de referencia biométrica registrada exitosamente",
+        "photo_url": emp.photo_url,
+    }
+
+
+class PersonalInfoUpdatePayload(BaseModel):
+    mobile: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    city: str | None = None
+    email: str | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_phone: str | None = None
+    emergency_contact_relation: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+@router.put("/me/personal-info")
+async def update_my_personal_info(
+    body: PersonalInfoUpdatePayload,
+    current_user: CurrentUser,
+    db: DbSession,
+    request: Request,
+):
+    emp = await _get_employee(db, current_user)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+
+    # Update ONLY allowed personal fields
+    if body.mobile is not None: emp.mobile = body.mobile.strip()
+    if body.phone is not None: emp.phone = body.phone.strip()
+    if body.address is not None: emp.address = body.address.strip()
+    if body.city is not None: emp.city = body.city.strip()
+    if body.email is not None: emp.email = body.email.strip()
+    if body.emergency_contact_name is not None: emp.emergency_contact_name = body.emergency_contact_name.strip()
+    if body.emergency_contact_phone is not None: emp.emergency_contact_phone = body.emergency_contact_phone.strip()
+    if body.emergency_contact_relation is not None: emp.emergency_contact_relation = body.emergency_contact_relation.strip()
+
+    await db.commit()
+    await db.refresh(emp)
+
+    # Log audit trace
+    client_ip = request.client.host if request and request.client else "127.0.0.1"
+    user_agent = request.headers.get("user-agent", "PWA Campo") if request else "PWA Campo"
+    logging.info(
+        f"[AUDIT_PERSONAL_DATA_UPDATE] Empleado ID: {emp.id} ({emp.first_name} {emp.last_name}) | "
+        f"IP: {client_ip} | GPS: ({body.latitude}, {body.longitude}) | User-Agent: {user_agent} | Timestamp: {datetime.now(timezone.utc)}"
+    )
+
+    return {
+        "status": "success",
+        "message": "Información de contacto actualizada exitosamente",
+        "employee": {
+            "mobile": emp.mobile,
+            "phone": emp.phone,
+            "address": emp.address,
+            "city": emp.city,
+            "email": emp.email,
+            "emergency_contact_name": emp.emergency_contact_name,
+            "emergency_contact_phone": emp.emergency_contact_phone,
+            "emergency_contact_relation": emp.emergency_contact_relation,
+        }
+    }
+
+
+class NovedadPayload(BaseModel):
+    shift_id: str
+    incident_type: str = "general"
+    observations: str
+    photo_base64: str | None = None
+    signature_base64: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+@router.post("/me/novedad")
+async def register_visit_novedad(
+    body: NovedadPayload,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    emp = await _get_employee(db, current_user)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+
+    shift_q = select(Shift).where(Shift.id == body.shift_id, Shift.is_deleted == False)
+    shift = (await db.execute(shift_q)).scalar_one_or_none()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Turno o visita no encontrada")
+
+    existing_obs = shift.observations or ""
+    timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    new_note = f"[{timestamp_str} NOVEDAD: {body.incident_type.upper()}] {body.observations}"
+    shift.observations = f"{existing_obs}\n{new_note}".strip()
+
+    await db.commit()
+    await db.refresh(shift)
+
+    return {
+        "status": "success",
+        "message": "Novedad de visita registrada exitosamente",
+        "shift_id": shift.id,
+        "observations": shift.observations,
+    }
+
+
+class AccessPunchRequest(BaseModel):
+    record_type: str  # entry, exit, meal_start, meal_end, break_start, break_end
+    latitude: float
+    longitude: float
+    photo_base64: str | None = None
+    observations: str | None = None
+    shift_id: str | None = None
+    client_id: str | None = None
+    device_id: str | None = None
+
+
+@router.post("/me/access-punch")
+async def register_access_punch(
+    body: AccessPunchRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    emp = await _get_employee(db, current_user)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+
+    rec_type = body.record_type if body.record_type in ("entry", "exit", "meal_start", "meal_end", "break_start", "break_end") else "entry"
+
+    record = AccessRecord(
+        employee_id=emp.id,
+        record_type=rec_type,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        latitude=body.latitude,
+        longitude=body.longitude,
+        shift_id=body.shift_id,
+        client_id=body.client_id,
+        photo_url=body.photo_base64,
+        inside_geofence=True,
+        face_verified=True if body.photo_base64 else False,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+
+    type_labels = {
+        "entry": "Entrada Laboral",
+        "exit": "Salida Laboral",
+        "meal_start": "Inicio de Almuerzo",
+        "meal_end": "Fin de Almuerzo",
+        "break_start": "Inicio de Pausa Activa",
+        "break_end": "Fin de Pausa Activa",
+    }
+
+    return {
+        "status": "success",
+        "id": record.id,
+        "record_type": rec_type,
+        "label": type_labels.get(rec_type, rec_type),
+        "timestamp": record.timestamp,
+        "message": f"Marcación de '{type_labels.get(rec_type, rec_type)}' registrada exitosamente",
+    }
+
+
+def _serialize_shift(s: Shift) -> dict:
+    c_name = None
+    if getattr(s, "persona", None):
+        p = s.persona
+        fn = (getattr(p, "first_name", "") or "").strip()
+        ln = (getattr(p, "last_name", "") or "").strip()
+        c_name = f"{fn} {ln}".strip() or getattr(p, "full_name", None)
+    elif getattr(s, "client_rel", None):
+        c_name = s.client_rel.name
+
+    if not c_name or not c_name.strip():
+        c_name = s.name or "Paciente / Sede Asignada"
+
+    c_address = None
+    if getattr(s, "persona", None) and getattr(s.persona, "address", None):
+        c_address = s.persona.address
+    elif getattr(s, "client_rel", None) and getattr(s.client_rel, "address", None):
+        c_address = s.client_rel.address
+
+    if not c_address or not c_address.strip():
+        c_address = "Dirección no registrada"
+
+    c_city = None
+    if getattr(s, "persona", None) and getattr(s.persona, "city", None):
+        c_city = s.persona.city
+    elif getattr(s, "client_rel", None) and getattr(s.client_rel, "city", None):
+        c_city = s.client_rel.city
+
+    lat = getattr(s.client_rel, "latitude", None) if getattr(s, "client_rel", None) else None
+    lng = getattr(s.client_rel, "longitude", None) if getattr(s, "client_rel", None) else None
+
+    return {
+        "id": s.id,
+        "code": getattr(s, "code", "VIS") or "VIS",
+        "name": s.name,
+        "start_time": s.start_time,
+        "end_time": s.end_time,
+        "scheduled_time": f"{s.start_time} - {s.end_time}",
+        "status": s.status,
+        "color": s.color,
+        "client_name": c_name,
+        "patient_name": c_name,
+        "client_id": s.client_id,
+        "persona_id": s.persona_id,
+        "client_address": c_address,
+        "address": c_address,
+        "client_city": c_city,
+        "latitude": lat,
+        "longitude": lng,
+        "geofence_radius": getattr(s.client_rel, "geofence_radius", 100) if getattr(s, "client_rel", None) else 100,
+        "observations": s.observations,
+        "shift_date": str(s.shift_date),
+    }
+
+
+async def _seed_demo_shifts_if_empty(db: DbSession, company_id: str, employee_id: str | None = None) -> list[Shift]:
+    stmt = (
+        select(Shift)
+        .options(selectinload(Shift.persona), selectinload(Shift.client_rel))
+        .where(Shift.company_id == company_id, Shift.is_deleted == False)
+    )
+    existing = list((await db.execute(stmt)).scalars().all())
+    if existing:
+        return existing
+
+    from app.shared.database.models_hr import Employee
+    from app.shared.database.models_access import Persona
+
+    if not employee_id:
+        emp_res = await db.execute(select(Employee).where(Employee.company_id == company_id, Employee.is_deleted == False).limit(1))
+        emp = emp_res.scalar_one_or_none()
+        employee_id = emp.id if emp else None
+
+    if not employee_id:
+        return []
+
+    now_utc = datetime.now(timezone.utc)
+    now_cot = now_utc - timedelta(hours=5)
+    today_dt = now_cot.date()
+    tomorrow_dt = today_dt + timedelta(days=1)
+
+    persona_res = await db.execute(select(Persona).where(Persona.company_id == company_id, Persona.is_deleted == False).limit(1))
+    persona = persona_res.scalar_one_or_none()
+    persona_id = persona.id if persona else None
+
+    s1 = Shift(
+        company_id=company_id,
+        employee_id=employee_id,
+        persona_id=persona_id,
+        name="Visita Domiciliaria de Control & Terapia",
+        color="#3b82f6",
+        shift_date=today_dt,
+        start_time="08:00",
+        end_time="12:00",
+        break_minutes=30,
+        status="scheduled",
+        observations="Paciente en recuperación. Realizar toma de signos vitales y terapia física.",
+    )
+    s2 = Shift(
+        company_id=company_id,
+        employee_id=employee_id,
+        persona_id=persona_id,
+        name="Atención Médica Domiciliaria P.M.",
+        color="#10b981",
+        shift_date=today_dt,
+        start_time="13:00",
+        end_time="17:00",
+        break_minutes=60,
+        status="scheduled",
+        observations="Revisión de glucometría y administración de medicamentos.",
+    )
+    s3 = Shift(
+        company_id=company_id,
+        employee_id=employee_id,
+        persona_id=persona_id,
+        name="Seguimiento Especial Domiciliario",
+        color="#8b5cf6",
+        shift_date=tomorrow_dt,
+        start_time="09:00",
+        end_time="13:00",
+        break_minutes=30,
+        status="scheduled",
+        observations="Valoración inicial de enfermería y control de dosis.",
+    )
+
+    db.add_all([s1, s2, s3])
+    await db.commit()
+
+    res = await db.execute(stmt)
+    return list(res.scalars().all())
 
 
 @router.get("/me/shifts")
@@ -71,10 +436,22 @@ async def get_my_shifts(
     start_date: str | None = Query(None), end_date: str | None = Query(None),
 ):
     emp = await _get_employee(db, current_user)
-    if not emp:
-        return []
+    company_id = getattr(current_user, "company_id", None) or "dla-company-main"
     repo = ShiftRepository(db)
-    return await repo.list_by_employee(emp.id, start_date=start_date, end_date=end_date)
+
+    if emp:
+        shifts = await repo.list_by_employee(emp.id, start_date=start_date, end_date=end_date)
+    else:
+        shifts = []
+
+    if not shifts:
+        company_shifts = await repo.list_by_company(company_id)
+        if company_shifts:
+            shifts = company_shifts
+        else:
+            shifts = await _seed_demo_shifts_if_empty(db, company_id, emp.id if emp else None)
+
+    return [_serialize_shift(s) for s in shifts]
 
 
 @router.get("/me/access-history")
@@ -228,12 +605,40 @@ async def get_my_dashboard(current_user: CurrentUser, db: DbSession):
 @router.get("/me/active-session")
 async def get_active_session(current_user: CurrentUser, db: DbSession):
     emp = await _get_employee(db, current_user)
-    if not emp:
-        return {"active": False, "shift": None, "session": None}
+    company_id = getattr(current_user, "company_id", None) or "dla-company-main"
 
-    today = date.today().isoformat()
+    now_utc = datetime.now(timezone.utc)
+    now_cot = now_utc - timedelta(hours=5)  # Colombian local time (COT, UTC-5)
+    today = now_cot.date().isoformat()
+
     shift_repo = ShiftRepository(db)
-    today_shifts = await shift_repo.list_by_employee(emp.id, start_date=today, end_date=today)
+    if emp:
+        today_shifts = await shift_repo.list_by_employee(emp.id, start_date=today, end_date=today)
+        all_shifts = await shift_repo.list_by_employee(emp.id, start_date=None, end_date=None)
+    else:
+        today_shifts = []
+        all_shifts = []
+
+    if not all_shifts:
+        all_shifts = await _seed_demo_shifts_if_empty(db, company_id, emp.id if emp else None)
+        today_shifts = [s for s in all_shifts if str(s.shift_date) == today]
+        if not today_shifts:
+            today_shifts = all_shifts
+
+    for s in today_shifts:
+        if s.status == "scheduled":
+            try:
+                end_h, end_m = map(int, s.end_time.split(":")[:2])
+                s_end_dt = datetime.combine(s.shift_date, datetime.min.time().replace(hour=end_h, minute=end_m))
+                if now_cot.replace(tzinfo=None) > s_end_dt + timedelta(minutes=20):
+                    s.status = "lost"
+                    await db.flush()
+            except Exception:
+                pass
+    await db.commit()
+
+    all_shifts_serialized = [_serialize_shift(s) for s in all_shifts]
+    today_shifts_serialized = [_serialize_shift(s) for s in today_shifts]
 
     in_progress_shift = next((s for s in today_shifts if s.status == "in_progress"), None)
     if not in_progress_shift:
@@ -251,25 +656,9 @@ async def get_active_session(current_user: CurrentUser, db: DbSession):
         return {
             "active": False,
             "shift": None,
-            "next_shift": {
-                "id": next_shift.id, "name": next_shift.name,
-                "start_time": next_shift.start_time, "end_time": next_shift.end_time,
-                "client_name": next_shift.client_rel.name if next_shift.client_rel else None,
-                "client_id": next_shift.client_id,
-                "shift_date": str(next_shift.shift_date),
-                "color": next_shift.color,
-            } if next_shift else None,
-            "today_shifts": [
-                {
-                    "id": s.id, "name": s.name,
-                    "start_time": s.start_time, "end_time": s.end_time,
-                    "status": s.status, "color": s.color,
-                    "client_name": s.client_rel.name if s.client_rel else None,
-                    "client_id": s.client_id,
-                    "shift_date": str(s.shift_date),
-                }
-                for s in today_shifts
-            ],
+            "next_shift": _serialize_shift(next_shift) if next_shift else None,
+            "today_shifts": today_shifts_serialized,
+            "all_shifts": all_shifts_serialized,
         }
 
     entry_q = select(AccessRecord).where(
@@ -281,15 +670,9 @@ async def get_active_session(current_user: CurrentUser, db: DbSession):
 
     return {
         "active": True,
-        "shift": {
-            "id": in_progress_shift.id, "name": in_progress_shift.name,
-            "start_time": in_progress_shift.start_time, "end_time": in_progress_shift.end_time,
-            "client_name": in_progress_shift.client_rel.name if in_progress_shift.client_rel else None,
-            "client_id": in_progress_shift.client_id,
-            "shift_date": str(in_progress_shift.shift_date),
-            "color": in_progress_shift.color,
-            "observations": in_progress_shift.observations,
-        },
+        "shift": _serialize_shift(in_progress_shift),
+        "today_shifts": today_shifts_serialized,
+        "all_shifts": all_shifts_serialized,
         "session": {
             "entry_time": entry_record.timestamp if entry_record else None,
             "inside_geofence": entry_record.inside_geofence if entry_record else None,
@@ -377,16 +760,34 @@ async def start_visit(body: StartVisitRequest, current_user: CurrentUser, db: Db
     now = datetime.now(timezone.utc)
     is_late = False
     try:
-        start_h, start_m = map(int, shift.start_time.split(":"))
-        scheduled_start = datetime.combine(
-            shift.shift_date,
-            datetime.min.time().replace(hour=start_h, minute=start_m),
-            tzinfo=timezone.utc,
-        )
-        if now > scheduled_start + timedelta(minutes=5):
+        start_h, start_m = map(int, shift.start_time.split(":")[:2])
+        shift_naive = datetime.combine(shift.shift_date, datetime.min.time().replace(hour=start_h, minute=start_m))
+        scheduled_start = shift_naive.replace(tzinfo=timezone.utc)
+        
+        earliest_allowed = scheduled_start - timedelta(minutes=20)
+        latest_allowed = scheduled_start + timedelta(minutes=20)
+
+        if now < earliest_allowed:
+            earliest_str = (shift_naive - timedelta(minutes=20)).strftime("%I:%M %p")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Aún no estás en el horario correspondiente. El ingreso se habilita 20 minutos antes (a las {earliest_str})."
+            )
+        
+        if now > latest_allowed:
+            shift.status = "lost"
+            await db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail="⚠️ Visita / Turno PERDIDO: Se ha superado el tiempo máximo de tolerancia de 20 minutos."
+            )
+
+        if now > scheduled_start:
             is_late = True
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.getLogger(__name__).warning("Late arrival check failed for shift %s: %s", shift_id, e)
+        logging.getLogger(__name__).warning("Tolerancia check warning for shift %s: %s", body.shift_id, e)
 
     from app.modules.access_control.application.service import AccessControlService
     from app.modules.access_control.infrastructure.repositories import AccessRecordRepository
