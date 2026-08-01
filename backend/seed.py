@@ -394,20 +394,25 @@ async def seed():
         await db.commit()
 
         # 6. Demo Patients / Personas
-        from app.shared.database.models_access import Persona
-        p_res = await db.execute(text("SELECT id FROM personas WHERE company_id = :cid"), {"cid": company_id})
+        from app.shared.database.models_clients import Persona, Client as ClientModel
+        p_res = await db.execute(text("SELECT id FROM personas LIMIT 1"))
         p_rows = p_res.fetchall()
         persona_id = p_rows[0][0] if p_rows else None
-        if not persona_id:
+        if not persona_id and created_client_ids:
             p_id = str(uuid.uuid4())
-            persona = Persona(
-                id=p_id, company_id=company_id, document_number="32541987",
-                first_name="Don Pedro José", last_name="Gómez", full_name="Don Pedro José Gómez",
-                address="Carrera 48 # 12-50, Envigado, Antioquia", city="Envigado",
-            )
-            db.add(persona)
-            await db.commit()
-            persona_id = p_id
+            # Get first client id from DB since created_client_ids may be empty at this point
+            cl_res = await db.execute(text("SELECT id FROM clients WHERE company_id = :cid LIMIT 1"), {"cid": company_id})
+            cl_row = cl_res.fetchone()
+            if cl_row:
+                persona = Persona(
+                    id=p_id, client_id=cl_row[0], document_type="CC",
+                    document_number="32541987",
+                    first_name="Don Pedro José", last_name="Gómez",
+                    address="Carrera 48 # 12-50, Envigado, Antioquia", city="Armenia",
+                )
+                db.add(persona)
+                await db.commit()
+                persona_id = p_id
 
         # 7. Demo Shifts covering all filters
         from app.shared.database.models_scheduling import Shift
@@ -437,6 +442,122 @@ async def seed():
             ]
             db.add_all(shifts_demo)
             await db.commit()
+
+        await db.commit()
+
+        # 8. Demo Clients / Sedes
+        from app.shared.database.models_clients import Client
+        c_res = await db.execute(text("SELECT count(*) FROM clients WHERE company_id = :cid"), {"cid": company_id})
+        client_count = c_res.scalar() or 0
+
+        demo_clients = [
+            {
+                "nit": "800123001-0", "name": "IPS Salud Armenia Centro", "trade_name": "Salud Armenia IPS",
+                "client_type": "ips", "email": "info@saludarmeniaips.com", "phone": "6741234567",
+                "mobile": "3001112233", "address": "Calle 20 # 14-35, Centro, Armenia",
+                "department": "Quindío", "city": "Armenia", "country": "CO",
+                "latitude": 4.5339, "longitude": -75.6811, "geofence_radius": 150,
+                "notes": "IPS principal de prueba — pacientes de control domiciliario.",
+            },
+            {
+                "nit": "800123002-1", "name": "Clínica San Rafael del Quindío", "trade_name": "Clínica San Rafael",
+                "client_type": "clinic", "email": "clinica@sanrafaelq.com", "phone": "6749876543",
+                "mobile": "3102223344", "address": "Carrera 19 # 8-41, El Bosque, Armenia",
+                "department": "Quindío", "city": "Armenia", "country": "CO",
+                "latitude": 4.5368, "longitude": -75.6775, "geofence_radius": 100,
+                "notes": "Clínica de referencia para visitas ambulatorias.",
+            },
+            {
+                "nit": "800123003-2", "name": "Hospital Departamental San Juan de Dios", "trade_name": "Hospital San Juan de Dios",
+                "client_type": "hospital", "email": "hospital@sanjuandiosq.gov.co", "phone": "6741110000",
+                "mobile": "3153334455", "address": "Calle 11 # 13-20, La Castellana, Armenia",
+                "department": "Quindío", "city": "Armenia", "country": "CO",
+                "latitude": 4.5290, "longitude": -75.6830, "geofence_radius": 200,
+                "notes": "Hospital departamental — cuidados especiales y UCI domiciliaria.",
+            },
+            {
+                "nit": "800123004-3", "name": "Empresa Seguridad Privada VisionPro", "trade_name": "VisionPro Seguridad",
+                "client_type": "enterprise", "email": "rrhh@visionproseg.com", "phone": "6745556677",
+                "mobile": "3164445566", "address": "Avenida Bolívar # 25-10, Urbanización Villa del Norte, Armenia",
+                "department": "Quindío", "city": "Armenia", "country": "CO",
+                "latitude": 4.5412, "longitude": -75.6742, "geofence_radius": 120,
+                "notes": "Empresa de vigilancia privada — turnos de seguridad 24/7.",
+            },
+            {
+                "nit": "800123005-4", "name": "Centro Día Adulto Mayor La Esperanza", "trade_name": "Centro La Esperanza",
+                "client_type": "individual", "email": "centroadulto@laesperanzaq.com", "phone": "6742223344",
+                "mobile": "3175556677", "address": "Carrera 23 # 17-55, Barrio Centenario, Armenia",
+                "department": "Quindío", "city": "Armenia", "country": "CO",
+                "latitude": 4.5351, "longitude": -75.6798, "geofence_radius": 80,
+                "notes": "Centro de día para adulto mayor — visitas de enfermería y terapias.",
+            },
+        ]
+
+        created_client_ids = []
+        if client_count == 0:
+            for cli_def in demo_clients:
+                cli_id = str(uuid.uuid4())
+                client = Client(
+                    id=cli_id, company_id=company_id,
+                    nit=cli_def["nit"], name=cli_def["name"], trade_name=cli_def["trade_name"],
+                    client_type=cli_def["client_type"], email=cli_def["email"],
+                    phone=cli_def["phone"], mobile=cli_def["mobile"],
+                    address=cli_def["address"], department=cli_def["department"],
+                    city=cli_def["city"], country=cli_def["country"],
+                    latitude=cli_def["latitude"], longitude=cli_def["longitude"],
+                    geofence_radius=cli_def["geofence_radius"], notes=cli_def["notes"],
+                    status="active",
+                )
+                db.add(client)
+                created_client_ids.append(cli_id)
+            await db.commit()
+            print(f"  Clientes:    {len(demo_clients)} sedes/clientes de prueba creados")
+        else:
+            c_ids_res = await db.execute(text("SELECT id FROM clients WHERE company_id = :cid LIMIT 5"), {"cid": company_id})
+            created_client_ids = [row[0] for row in c_ids_res.fetchall()]
+            print(f"  Clientes:    ya existían ({client_count} encontrados)")
+
+        # 9. Demo Personas linked to clients
+        p_total_res = await db.execute(text("SELECT count(*) FROM personas"))
+        p_total = p_total_res.scalar() or 0
+
+        if p_total < 6 and created_client_ids:
+            extra_personas = [
+                {
+                    "document_number": "43201876", "first_name": "Rosa María", "last_name": "Londoño Ríos",
+                    "address": "Calle 20 # 14-35, Centro, Armenia", "city": "Armenia",
+                    "client_idx": 0,
+                },
+                {
+                    "document_number": "19875432", "first_name": "Ernesto", "last_name": "Vargas Ospina",
+                    "address": "Carrera 19 # 8-41, El Bosque, Armenia", "city": "Armenia",
+                    "client_idx": 1,
+                },
+                {
+                    "document_number": "52678901", "first_name": "Gloria Inés", "last_name": "Salazar Mora",
+                    "address": "Avenida Bolívar # 25-10, Armenia", "city": "Armenia",
+                    "client_idx": 3,
+                },
+                {
+                    "document_number": "71234560", "first_name": "Hernán Darío", "last_name": "Restrepo",
+                    "address": "Carrera 23 # 17-55, Centenario, Armenia", "city": "Armenia",
+                    "client_idx": 4,
+                },
+            ]
+            for per_def in extra_personas:
+                p_check = await db.execute(text("SELECT id FROM personas WHERE document_number = :doc"), {"doc": per_def["document_number"]})
+                if not p_check.fetchone():
+                    idx = per_def["client_idx"]
+                    cli_id = created_client_ids[idx] if idx < len(created_client_ids) else created_client_ids[0]
+                    persona = Persona(
+                        id=str(uuid.uuid4()), client_id=cli_id, document_type="CC",
+                        document_number=per_def["document_number"],
+                        first_name=per_def["first_name"], last_name=per_def["last_name"],
+                        address=per_def["address"], city=per_def["city"],
+                    )
+                    db.add(persona)
+            await db.commit()
+            print(f"  Pacientes:   {len(extra_personas)} personas/pacientes adicionales creados")
 
         await db.commit()
         print(f"Seed completado:")
