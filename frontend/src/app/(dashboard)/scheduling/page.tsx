@@ -397,28 +397,29 @@ export default function SchedulingPage() {
   const handleBulkSave = async () => {
     if (pendingEvents.length === 0) return;
 
-    // Only save events that have been dragged to a date on the calendar
-    const readyEvents = pendingEvents.filter((e) => !!e.shift_date);
-    const notDragged = pendingEvents.filter((e) => !e.shift_date);
+    // Clones are events that were dragged to a calendar day (they have shift_date assigned)
+    // Originals stay in the left column with no shift_date
+    const clonedEvents = pendingEvents.filter((e) => !!e.shift_date);
+    const unassigned = pendingEvents.filter((e) => !e.shift_date);
 
-    if (readyEvents.length === 0) {
+    if (clonedEvents.length === 0) {
       addToast(`Ningún evento tiene fecha asignada. Arrastre los eventos al día correspondiente en el calendario antes de guardar.`, "warning");
       return;
     }
-    if (notDragged.length > 0) {
-      addToast(`${notDragged.length} evento(s) sin fecha — no se han arrastrado al calendario. Solo se guardarán los ${readyEvents.length} evento(s) con fecha asignada.`, "warning");
+    if (unassigned.length > 0) {
+      addToast(`${unassigned.length} evento(s) en la columna aún sin arrastrar al calendario — se guardarán solo los ${clonedEvents.length} evento(s) ya asignados a días.`, "warning");
     }
 
-    const pastEvents = readyEvents.filter((e) => isDateOrTimePast(e.shift_date, e.start_time).isPast);
+    const pastEvents = clonedEvents.filter((e) => isDateOrTimePast(e.shift_date, e.start_time).isPast);
     if (pastEvents.length > 0) {
       const firstPast = pastEvents[0];
       const checkMsg = isDateOrTimePast(firstPast.shift_date, firstPast.start_time).message;
       addToast(`Hay ${pastEvents.length} evento(s) en fecha u hora pasada. ${checkMsg}`, "error");
       return;
     }
-    const missingEmployee = readyEvents.filter((e) => !e.employee_id);
+    const missingEmployee = clonedEvents.filter((e) => !e.employee_id);
     if (missingEmployee.length > 0) {
-      addToast(`${missingEmployee.length} evento(s) sin empleado asignado. Asigne un empleado a cada evento antes de guardar.`, "warning");
+      addToast(`${missingEmployee.length} evento(s) sin empleado asignado. Edite el evento en el calendario para asignarlo.`, "warning");
       return;
     }
     setSaving(true);
@@ -429,17 +430,18 @@ export default function SchedulingPage() {
         setSaving(false);
         return;
       }
-      const events = readyEvents.map((e) => ({
+      const events = clonedEvents.map((e) => ({
         employee_id: e.employee_id || null, client_id: e.client_id || null, persona_id: e.persona_id || null,
         project_id: e.project_id || null, shift_template_id: e.shift_template_id || null,
         name: e.name || null, color: e.color, shift_date: e.shift_date,
         start_time: e.start_time, end_time: e.end_time,
         break_minutes: e.break_minutes, priority: e.priority, observations: e.observations || null,
       }));
+      const savedIds = new Set(clonedEvents.map((e) => e.id));
       const res = await api.post("/scheduling/bulk-save", { company_id: companyId, events });
       if (res.data.success) {
-        // Remove only the events that were saved (those with dates), keep undragged ones in column
-        setPendingEvents((prev) => prev.filter((e) => !e.shift_date));
+        // Remove only the clones that were saved; keep originals (no shift_date) in left column
+        setPendingEvents((prev) => prev.filter((e) => !savedIds.has(e.id)));
         setConflicts([]);
         loadCalendar();
         addToast(`${events.length} turno(s) guardado(s) correctamente`, "success");
@@ -678,15 +680,15 @@ export default function SchedulingPage() {
           <Button variant="outline" size="sm" onClick={() => setFormOpen(true)}><Plus className="mr-1 h-3 w-3" />Crear Evento</Button>
           {pendingEvents.length > 0 && (
             <>
-              {pendingEvents.filter((e) => !e.employee_id).length > 0 && (
+              {pendingEvents.filter((e) => !e.employee_id && !!e.shift_date).length > 0 && (
                 <span className="text-xs text-amber-600 flex items-center gap-1">
                   <AlertTriangle className="h-3 w-3" />
-                  {pendingEvents.filter((e) => !e.employee_id).length} sin empleado
+                  {pendingEvents.filter((e) => !e.employee_id && !!e.shift_date).length} sin empleado
                 </span>
               )}
               <Button size="sm" onClick={handleBulkSave} disabled={saving}>
                 {saving ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
-                Guardar ({pendingEvents.length})
+                Guardar ({pendingEvents.filter((e) => !!e.shift_date).length})
               </Button>
             </>
           )}
