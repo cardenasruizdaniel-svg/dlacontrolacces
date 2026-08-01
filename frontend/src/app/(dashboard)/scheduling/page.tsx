@@ -148,7 +148,7 @@ export default function SchedulingPage() {
   const [form, setForm] = useState({
     employee_id: "", client_id: "", persona_id: "", project_id: "",
     shift_template_id: "", name: "", color: "#3b82f6", shift_date: "",
-    start_time: "08:00", end_time: "17:00", break_minutes: "60", priority: "normal", observations: "",
+    start_time: "08:00", end_time: "17:00", break_minutes: "0", priority: "normal", observations: "",
     recurrence_type: "none", recurrence_days: "", recurrence_end_date: "", max_occurrences: "",
   });
   const [editEvent, setEditEvent] = useState<PendingEvent | null>(null);
@@ -346,7 +346,7 @@ export default function SchedulingPage() {
       project_id: form.project_id, shift_template_id: form.shift_template_id,
       name: form.name, color: form.color, shift_date: form.shift_date,
       start_time: form.start_time, end_time: form.end_time,
-      break_minutes: parseInt(form.break_minutes) || 60,
+      break_minutes: parseInt(form.break_minutes) || 0,
       priority: form.priority, observations: form.observations,
     };
     const conflicts = findConflictsForEmployee(
@@ -360,7 +360,7 @@ export default function SchedulingPage() {
     }
     if (editEvent) { setPendingEvents((prev) => prev.map((p) => p.id === editEvent.id ? ev : p)); setEditEvent(null); }
     else { setPendingEvents((prev) => [...prev, ev]); }
-    setForm({ employee_id: "", client_id: "", persona_id: "", project_id: "", shift_template_id: "", name: "", color: "#3b82f6", shift_date: "", start_time: "08:00", end_time: "17:00", break_minutes: "60", priority: "normal", observations: "", recurrence_type: "none", recurrence_days: "", recurrence_end_date: "", max_occurrences: "" });
+    setForm({ employee_id: "", client_id: "", persona_id: "", project_id: "", shift_template_id: "", name: "", color: "#3b82f6", shift_date: "", start_time: "08:00", end_time: "17:00", break_minutes: "0", priority: "normal", observations: "", recurrence_type: "none", recurrence_days: "", recurrence_end_date: "", max_occurrences: "" });
     setFormOpen(false);
   };
 

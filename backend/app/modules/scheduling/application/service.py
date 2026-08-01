@@ -318,25 +318,32 @@ class SchedulingService:
                 "date": str(shift_date_val),
             })
 
-        # 2. Excessive hours (>12h daily)
-        start_h, start_m = map(int, start_time.split(":"))
-        end_h, end_m = map(int, end_time.split(":"))
-        work_minutes = (end_h * 60 + end_m) - (start_h * 60 + start_m)
-        if work_minutes < 0:
-            work_minutes += 24 * 60  # overnight shift
-        total_hours = (work_minutes - break_minutes) / 60
-        if total_hours > 12:
+        # 2. Excessive hours (>12h daily) and valid time check
+        start_h, start_m = map(int, start_time.split(":")[:2])
+        end_h, end_m = map(int, end_time.split(":")[:2])
+        start_total_mins = start_h * 60 + start_m
+        end_total_mins = end_h * 60 + end_m
+        
+        if start_total_mins == end_total_mins:
             conflicts.append({
-                "type": "excessive_hours",
-                "message": f"Jornada de {total_hours:.1f}h excede el máximo de 12 horas diarias",
+                "type": "invalid_time",
+                "message": "La hora de fin debe ser diferente a la hora de inicio",
                 "conflicting_shift_id": None,
                 "employee_id": employee_id,
                 "date": str(shift_date_val),
             })
-        if total_hours < 0:
+            work_minutes = 0
+        else:
+            work_minutes = end_total_mins - start_total_mins
+            if work_minutes < 0:
+                work_minutes += 24 * 60  # overnight shift
+
+        effective_break = min(break_minutes, max(0, work_minutes - 1))
+        total_hours = (work_minutes - effective_break) / 60
+        if total_hours > 12:
             conflicts.append({
-                "type": "invalid_time",
-                "message": "La hora de fin debe ser posterior a la hora de inicio",
+                "type": "excessive_hours",
+                "message": f"Jornada de {total_hours:.1f}h excede el máximo de 12 horas diarias",
                 "conflicting_shift_id": None,
                 "employee_id": employee_id,
                 "date": str(shift_date_val),
