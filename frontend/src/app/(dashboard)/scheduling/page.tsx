@@ -330,12 +330,8 @@ export default function SchedulingPage() {
   };
 
   const addPendingEvent = () => {
-    if (!form.employee_id || !form.shift_date || !form.name) return;
-    const checkPast = isDateOrTimePast(form.shift_date, form.start_time);
-    if (checkPast.isPast) {
-      addToast(checkPast.message, "error");
-      return;
-    }
+    if (!form.employee_id || !form.name) return;
+    // Date is assigned by drag-and-drop; skip past-date check when no date is set yet
     const emp = employees.find((e) => e.id === form.employee_id);
     const cli = clients.find((c) => c.id === form.client_id);
     const per = personas.find((p) => p.id === form.persona_id);

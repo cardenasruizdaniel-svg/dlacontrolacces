@@ -311,22 +311,25 @@ export default function ClientsPage() {
       if (editingClient) {
         const res = await api.put(`/clients/${editingClient.id}`, payload);
         showToast("success", `Cliente "${form.name}" actualizado correctamente`);
-        if (res.data && res.data.id) {
-          setClients((prev) => prev.map((c) => (c.id === editingClient.id ? { ...c, ...res.data } : c)));
-        }
+        // Optimistic update: immediately reflect in list
+        setClients((prev) => prev.map((c) => (c.id === editingClient.id ? { ...c, ...res.data } : c)));
       } else {
         const res = await api.post("/clients", payload);
         showToast("success", `Cliente "${form.name}" creado correctamente`);
+        // Optimistic insert at top immediately
         if (res.data && res.data.id) {
           setClients((prev) => [res.data, ...prev.filter((c) => c.id !== res.data.id)]);
           setTotal((prev) => prev + 1);
         }
       }
 
+      // Close modal immediately so user sees the list update
       setShowCreate(false);
       setEditingClient(null);
       setForm({ ...defaultForm });
-      await loadClients();
+
+      // Reload from server in background (non-blocking)
+      loadClients();
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       const errMsg = typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ") : "Error al guardar cliente. Verifique los datos.";

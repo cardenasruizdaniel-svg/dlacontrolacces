@@ -128,8 +128,10 @@ export default function MobileShiftView() {
     } catch {}
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
+    localStorage.removeItem("dla_face_registered");
     if (typeof window !== "undefined") {
-      window.location.replace("/login");
+      // Use href assignment to force full navigation – replace() can get stuck in PWA standalone mode
+      window.location.href = "/login";
     }
   };
 
