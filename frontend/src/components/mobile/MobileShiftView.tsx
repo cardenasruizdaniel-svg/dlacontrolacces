@@ -206,13 +206,41 @@ export default function MobileShiftView() {
     fetchSession();
   }, [fetchSession]);
 
-  // Mandatory Initial Reference Photo Gate Check
+  // Helper to check if biometric photo is registered
+  const checkBiometricRegistered = useCallback((): boolean => {
+    if (employeeProfile?.is_face_registered || (employeeProfile?.photo_url && String(employeeProfile.photo_url).trim() !== "")) {
+      return true;
+    }
+    if ((user as any)?.is_face_registered || ((user as any)?.photo_url && String((user as any).photo_url).trim() !== "")) {
+      return true;
+    }
+    if (typeof window !== "undefined") {
+      const localPhoto = localStorage.getItem("dla_user_photo");
+      const localRegistered = localStorage.getItem("dla_face_registered");
+      if (localRegistered === "true" || (localPhoto && localPhoto.trim() !== "")) {
+        return true;
+      }
+    }
+    return false;
+  }, [employeeProfile, user]);
+
+  // Helper to calculate Haversine distance in meters
+  const calculateDistanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round(R * c);
+  };
+
+  // Mandatory Initial Reference Photo Gate Check - ONLY if NOT registered
   useEffect(() => {
     if (employeeProfile && !loading) {
-      const storedLocalPhoto = typeof window !== "undefined" ? localStorage.getItem("dla_user_photo") : null;
-      const currentPhoto = employeeProfile?.photo_url || (user as any)?.photo_url || storedLocalPhoto;
-      if (!currentPhoto || currentPhoto.trim() === "") {
-        // Open mandatory camera modal automatically if photo is missing
+      const registered = checkBiometricRegistered();
+      if (!registered) {
         setCameraPurpose("reference");
         setCameraModalOpen(true);
         setTimeout(() => {
@@ -220,7 +248,7 @@ export default function MobileShiftView() {
         }, 400);
       }
     }
-  }, [employeeProfile, loading, user]);
+  }, [employeeProfile, loading, checkBiometricRegistered]);
 
   // Capture GPS position
   const getGPS = (): Promise<{ lat: number; lng: number }> => {
@@ -296,9 +324,9 @@ export default function MobileShiftView() {
 
   // Open Camera Modal for Action
   const openCameraModal = (purpose: "reference" | "start" | "end" | "novedad", shiftId?: string) => {
-    const hasPhoto = !!(employeeProfile?.photo_url || (user as any)?.photo_url);
+    const hasPhoto = checkBiometricRegistered();
     if (purpose === "reference" && hasPhoto) {
-      setStatusMessage("🔒 Su foto de referencia biométrica ya está registrada y protegida. No se permite cambiarla desde la App Móvil.");
+      setStatusMessage("🔒 Su foto de referencia biométrica ya está registrada y protegida. No requiere ser capturada nuevamente.");
       return;
     }
     setCameraPurpose(purpose);
@@ -323,15 +351,18 @@ export default function MobileShiftView() {
         setEmployeeProfile((prev: any) => ({ ...prev, photo_url: photoUrl, is_face_registered: true }));
         if (typeof window !== "undefined") {
           localStorage.setItem("dla_user_photo", photoUrl);
+          localStorage.setItem("dla_face_registered", "true");
         }
         if (user) {
           (user as any).photo_url = photoUrl;
+          (user as any).is_face_registered = true;
         }
         await fetchSession();
       } else {
-        setStatusMessage("⚠️ Fotografía guardada localmente.");
+        setStatusMessage("⚠️ Fotografía de referencia guardada localmente.");
         if (typeof window !== "undefined") {
           localStorage.setItem("dla_user_photo", capturedPhotoBase64);
+          localStorage.setItem("dla_face_registered", "true");
         }
       }
       stopCamera();
@@ -616,8 +647,7 @@ export default function MobileShiftView() {
 
       {/* BANNER REGISTRO OBLIGATORIO DE FOTO INICIAL */}
       {(() => {
-        const currentPhoto = employeeProfile?.photo_url || (user as any)?.photo_url;
-        const hasPhoto = !!(currentPhoto && currentPhoto.trim());
+        const hasPhoto = checkBiometricRegistered();
         if (hasPhoto) return null;
 
         return (
@@ -928,6 +958,35 @@ export default function MobileShiftView() {
                     {v.observations && (
                       <p className="text-[11px] text-slate-400 italic bg-slate-950/40 p-2 rounded-lg">"{v.observations}"</p>
                     )}
+
+                    {/* Botón Principal de Acción de Ingreso / Salida al Paciente */}
+                    <div className="pt-1">
+                      {v.status === "in_progress" ? (
+                        <Button
+                          onClick={() => openCameraModal("end", v.id)}
+                          className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs gap-2 py-3 rounded-xl shadow-lg animate-pulse"
+                        >
+                          <Square className="h-4 w-4 fill-white" /> ⏹️ Finalizar Visita de {v.patient_name || v.client_name || "Paciente"}
+                        </Button>
+                      ) : v.status === "completed" ? (
+                        <div className="p-2 bg-emerald-950/60 border border-emerald-500/30 rounded-xl text-center text-xs font-bold text-emerald-300 flex items-center justify-center gap-1.5">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                          <span>Visita Finalizada Exitosamente</span>
+                        </div>
+                      ) : v.status === "cancelled" || v.status === "lost" ? (
+                        <div className="p-2 bg-rose-950/60 border border-rose-500/30 rounded-xl text-center text-xs font-bold text-rose-300 flex items-center justify-center gap-1.5">
+                          <AlertTriangle className="h-4 w-4 text-rose-400" />
+                          <span>Visita {v.status === "lost" ? "Perdida" : "Cancelada"}</span>
+                        </div>
+                      ) : (
+                        <Button
+                          onClick={() => openCameraModal("start", v.id)}
+                          className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-black text-xs gap-2 py-3 rounded-xl shadow-lg"
+                        >
+                          <Play className="h-4 w-4 fill-white" /> ▶️ Ingresar a Visita de {v.patient_name || v.client_name || "Paciente"}
+                        </Button>
+                      )}
+                    </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs pt-1">
                       {v.latitude && v.longitude ? (
@@ -1294,9 +1353,63 @@ export default function MobileShiftView() {
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2 text-cyan-400">
               <Camera className="h-5 w-5" />
-              {cameraPurpose === "reference" ? "Capturar Foto de Referencia Oficial" : cameraPurpose === "start" ? "Validación Biométrica de Inicio" : "Validación Biométrica de Salida"}
+              {cameraPurpose === "reference" ? "Capturar Foto de Referencia Oficial" : cameraPurpose === "start" ? "Ingreso a Visita de Paciente" : "Finalización de Visita de Paciente"}
             </DialogTitle>
           </DialogHeader>
+
+          {/* TARGET PATIENT & GEOREFERENCE CORROBORATION INFO */}
+          {(() => {
+            const currentTargetShift = visitList.find((v) => v.id === targetShiftId);
+            if (!currentTargetShift || (cameraPurpose !== "start" && cameraPurpose !== "end")) return null;
+
+            return (
+              <div className="p-3 bg-slate-950 rounded-xl border border-cyan-500/30 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-cyan-300">Paciente Acompañado:</span>
+                  <span className="font-mono text-[10px] text-slate-400">{currentTargetShift.code || "VIS"}</span>
+                </div>
+                <p className="font-black text-white text-sm">{currentTargetShift.patient_name || currentTargetShift.client_name || currentTargetShift.name}</p>
+                <p className="text-[11px] text-slate-300 flex items-center gap-1">
+                  <MapPin className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                  <span>{currentTargetShift.client_address || currentTargetShift.address || "Dirección de Paciente"}</span>
+                </p>
+
+                {/* Geofence GPS Corroboration Badge */}
+                {(() => {
+                  if (!coords) {
+                    return (
+                      <div className="p-2 bg-slate-900 rounded-lg text-[10px] text-amber-300 flex items-center gap-1.5 font-bold">
+                        <RefreshCw className="h-3 w-3 animate-spin text-amber-400" />
+                        <span>Obteniendo coordenadas GPS en tiempo real...</span>
+                      </div>
+                    );
+                  }
+                  if (currentTargetShift.latitude && currentTargetShift.longitude) {
+                    const dist = calculateDistanceMeters(coords.lat, coords.lng, Number(currentTargetShift.latitude), Number(currentTargetShift.longitude));
+                    const isNear = dist <= 300;
+                    return (
+                      <div className={`p-2 rounded-lg text-[10px] font-bold flex items-center gap-1.5 ${
+                        isNear ? "bg-emerald-950/80 border border-emerald-500/40 text-emerald-300" : "bg-amber-950/80 border border-amber-500/40 text-amber-300"
+                      }`}>
+                        <MapPin className={`h-3.5 w-3.5 ${isNear ? "text-emerald-400" : "text-amber-400"}`} />
+                        <span>
+                          {isNear
+                            ? `🟢 Georreferencia Confirmada: A ${dist} metros del paciente`
+                            : `🟡 Ubicación a ${dist}m del domicilio del paciente (Auditado)`}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="p-2 bg-slate-900 rounded-lg text-[10px] text-cyan-300 font-mono flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-cyan-400" />
+                      <span>GPS Capturado: Lat {coords.lat.toFixed(4)}, Lng {coords.lng.toFixed(4)}</span>
+                    </div>
+                  );
+                })()}
+              </div>
+            );
+          })()}
 
           <div className="space-y-4 py-2 text-xs">
             {/* Live WebCam Stream / Canvas Display */}
@@ -1327,7 +1440,7 @@ export default function MobileShiftView() {
           <DialogFooter className="flex flex-col gap-2 sm:flex-row">
             {!capturedPhotoBase64 ? (
               <Button onClick={takeCanvasSnapshot} className="w-full bg-cyan-600 hover:bg-cyan-700 font-bold text-xs gap-1 py-3">
-                <Camera className="h-4 w-4" /> Tomar Captura
+                <Camera className="h-4 w-4" /> Tomar Captura Facial
               </Button>
             ) : (
               <>

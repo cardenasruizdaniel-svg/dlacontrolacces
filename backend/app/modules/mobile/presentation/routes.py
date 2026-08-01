@@ -85,6 +85,7 @@ async def get_my_employee(current_user: CurrentUser, db: DbSession):
         "mobile": emp.mobile, "address": emp.address, "city": emp.city,
         "neighborhood": getattr(emp, "department_loc", None) or getattr(emp, "city", None),
         "status": emp.status, "photo_url": emp.photo_url,
+        "is_face_registered": getattr(emp, "is_face_registered", False) or bool(emp.photo_url and emp.photo_url.strip()),
         "signature_url": getattr(emp, "signature_url", None),
         "document_type": emp.document_type, "document_number": emp.document_number,
         "company_id": emp.company_id, "department_id": emp.department_id,
@@ -326,8 +327,14 @@ def _serialize_shift(s: Shift) -> dict:
     elif getattr(s, "client_rel", None) and getattr(s.client_rel, "city", None):
         c_city = s.client_rel.city
 
-    lat = getattr(s.client_rel, "latitude", None) if getattr(s, "client_rel", None) else None
-    lng = getattr(s.client_rel, "longitude", None) if getattr(s, "client_rel", None) else None
+    lat = None
+    lng = None
+    if getattr(s, "persona", None):
+        lat = getattr(s.persona, "latitude", None)
+        lng = getattr(s.persona, "longitude", None)
+    if not lat and getattr(s, "client_rel", None):
+        lat = getattr(s.client_rel, "latitude", None)
+        lng = getattr(s.client_rel, "longitude", None)
 
     return {
         "id": s.id,
