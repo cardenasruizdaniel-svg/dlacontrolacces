@@ -396,23 +396,30 @@ class SchedulingService:
         return conflicts
 
     async def bulk_save(self, company_id: str, events: list[dict], schedule_id: str | None = None) -> dict:
-        conflicts = await self.check_conflicts(company_id, events)
+        # Filter out events without a valid shift_date (not yet assigned via drag-and-drop)
+        valid_events = [ev for ev in events if ev.get("shift_date")]
+        if not valid_events:
+            return {"success": False, "created": 0, "conflicts": [],
+                    "message": "Ningún evento tiene fecha asignada. Arrastre los eventos al calendario antes de guardar."}
+
+        conflicts = await self.check_conflicts(company_id, valid_events)
         if conflicts:
             return {"success": False, "created": 0, "conflicts": conflicts,
                     "message": f"{len(conflicts)} conflicto(s) detectado(s). Corrija antes de guardar."}
 
+        dates = [ev["shift_date"] for ev in valid_events]
         if not schedule_id:
             schedule = await self.schedule_repo.create(
                 company_id=company_id,
                 name=f"Programación {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                start_date=events[0]["shift_date"] if events else str(date.today()),
-                end_date=events[-1]["shift_date"] if events else None,
+                start_date=min(dates),
+                end_date=max(dates),
             )
             schedule_id = schedule.id
 
         shifts_data = []
         skipped = 0
-        for ev in events:
+        for ev in valid_events:
             if not ev.get("employee_id"):
                 skipped += 1
                 continue
@@ -435,7 +442,7 @@ class SchedulingService:
                 "shift_date": ev["shift_date"],
                 "start_time": ev["start_time"],
                 "end_time": ev["end_time"],
-                "break_minutes": ev.get("break_minutes", 60),
+                "break_minutes": ev.get("break_minutes", 0),
                 "priority": ev.get("priority", "normal"),
                 "notes": ev.get("notes") or None,
                 "observations": ev.get("observations") or None,

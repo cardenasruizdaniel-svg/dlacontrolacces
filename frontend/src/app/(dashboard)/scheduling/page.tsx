@@ -396,14 +396,27 @@ export default function SchedulingPage() {
 
   const handleBulkSave = async () => {
     if (pendingEvents.length === 0) return;
-    const pastEvents = pendingEvents.filter((e) => isDateOrTimePast(e.shift_date, e.start_time).isPast);
+
+    // Only save events that have been dragged to a date on the calendar
+    const readyEvents = pendingEvents.filter((e) => !!e.shift_date);
+    const notDragged = pendingEvents.filter((e) => !e.shift_date);
+
+    if (readyEvents.length === 0) {
+      addToast(`Ningún evento tiene fecha asignada. Arrastre los eventos al día correspondiente en el calendario antes de guardar.`, "warning");
+      return;
+    }
+    if (notDragged.length > 0) {
+      addToast(`${notDragged.length} evento(s) sin fecha — no se han arrastrado al calendario. Solo se guardarán los ${readyEvents.length} evento(s) con fecha asignada.`, "warning");
+    }
+
+    const pastEvents = readyEvents.filter((e) => isDateOrTimePast(e.shift_date, e.start_time).isPast);
     if (pastEvents.length > 0) {
       const firstPast = pastEvents[0];
       const checkMsg = isDateOrTimePast(firstPast.shift_date, firstPast.start_time).message;
       addToast(`Hay ${pastEvents.length} evento(s) en fecha u hora pasada. ${checkMsg}`, "error");
       return;
     }
-    const missingEmployee = pendingEvents.filter((e) => !e.employee_id);
+    const missingEmployee = readyEvents.filter((e) => !e.employee_id);
     if (missingEmployee.length > 0) {
       addToast(`${missingEmployee.length} evento(s) sin empleado asignado. Asigne un empleado a cada evento antes de guardar.`, "warning");
       return;
@@ -416,7 +429,7 @@ export default function SchedulingPage() {
         setSaving(false);
         return;
       }
-      const events = pendingEvents.map((e) => ({
+      const events = readyEvents.map((e) => ({
         employee_id: e.employee_id || null, client_id: e.client_id || null, persona_id: e.persona_id || null,
         project_id: e.project_id || null, shift_template_id: e.shift_template_id || null,
         name: e.name || null, color: e.color, shift_date: e.shift_date,
@@ -425,7 +438,8 @@ export default function SchedulingPage() {
       }));
       const res = await api.post("/scheduling/bulk-save", { company_id: companyId, events });
       if (res.data.success) {
-        setPendingEvents([]);
+        // Remove only the events that were saved (those with dates), keep undragged ones in column
+        setPendingEvents((prev) => prev.filter((e) => !e.shift_date));
         setConflicts([]);
         loadCalendar();
         addToast(`${events.length} turno(s) guardado(s) correctamente`, "success");
