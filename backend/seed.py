@@ -416,7 +416,8 @@ async def seed():
         shift_count = s_res.scalar() or 0
 
         if shift_count == 0 and created_emp_ids:
-            today_dt = datetime.now(timezone.utc).date()
+            cot_now = datetime.now(timezone.utc) - timedelta(hours=5)
+            today_dt = cot_now.date()
             tomorrow_dt = today_dt + timedelta(days=1)
             emp_target = created_emp_ids[0]
 

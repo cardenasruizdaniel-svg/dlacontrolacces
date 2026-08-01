@@ -524,22 +524,25 @@ export default function SchedulingPage() {
 
   const handleDropOnDay = (dateStr: string) => {
     if (!dragSource) return;
-    if (isDatePast(dateStr)) {
-      addToast("No se puede programar en días ya pasados", "warning");
-      setDragSource(null);
-      return;
-    }
     if (dragSource.type === "template") {
       const t = templates.find((t) => t.id === dragSource.id);
       if (!t) { setDragSource(null); return; }
+      
+      const checkPast = isDateOrTimePast(dateStr, t.start_time);
+      if (checkPast.isPast) {
+        addToast(checkPast.message, "error");
+        setDragSource(null);
+        return;
+      }
+
       const newEv: PendingEvent = {
         id: uid(),
         employee_id: "",
         employee_name: "",
         client_id: "",
-        client_name: "",
         persona_id: "",
         persona_name: "",
+        client_name: "",
         project_id: "",
         shift_template_id: t.id,
         name: t.name,

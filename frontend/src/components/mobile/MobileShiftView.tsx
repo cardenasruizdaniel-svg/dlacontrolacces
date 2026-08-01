@@ -383,6 +383,24 @@ export default function MobileShiftView() {
     try {
       const location = await getGPS();
       const timestamp = new Date().toISOString();
+      const currentTargetShift = visitList.find((v) => v.id === targetShiftId);
+
+      // Validate GPS Geofence (if patient coordinates exist)
+      if (currentTargetShift && currentTargetShift.latitude && currentTargetShift.longitude) {
+        const dist = calculateDistanceMeters(
+          location.lat,
+          location.lng,
+          Number(currentTargetShift.latitude),
+          Number(currentTargetShift.longitude)
+        );
+        if (dist > 500) {
+          setStatusMessage(`❌ Error de Ubicación: Te encuentras a ${dist}m del domicilio del paciente (Límite máximo: 500m). Debe estar en el sitio para iniciar la visita.`);
+          stopCamera();
+          setCameraModalOpen(false);
+          setPunching(false);
+          return;
+        }
+      }
 
       if (navigator.onLine) {
         await api.post("/mobile/me/start-visit", {
@@ -392,7 +410,7 @@ export default function MobileShiftView() {
           photo_base64: capturedPhotoBase64 || undefined,
           offline_timestamp: timestamp,
         });
-        setStatusMessage("🟢 ¡Visita iniciada exitosamente con verificación GPS y facial!");
+        setStatusMessage("🟢 ¡Marcación Biométrica y GPS Verificadas! Ingresando a Visita del Paciente...");
       } else {
         await saveOfflinePunch({
           type: "start",
@@ -411,9 +429,13 @@ export default function MobileShiftView() {
       stopCamera();
       setCameraModalOpen(false);
       await fetchSession();
+      setActiveTab("agenda");
     } catch (err: any) {
       console.error("Error iniciando visita:", err);
-      setStatusMessage(`Error: ${err?.response?.data?.detail || err?.message || "No se pudo iniciar visita"}`);
+      const msg = err?.response?.data?.detail || err?.message || "No se pudo iniciar visita";
+      setStatusMessage(`❌ Error de Verificación: ${msg}`);
+      stopCamera();
+      setCameraModalOpen(false);
     } finally {
       setPunching(false);
     }

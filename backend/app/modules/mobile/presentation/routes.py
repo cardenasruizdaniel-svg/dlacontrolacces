@@ -635,11 +635,12 @@ async def get_active_session(current_user: CurrentUser, db: DbSession):
     for s in today_shifts:
         if s.status == "scheduled":
             try:
-                end_h, end_m = map(int, s.end_time.split(":")[:2])
-                s_end_dt = datetime.combine(s.shift_date, datetime.min.time().replace(hour=end_h, minute=end_m))
-                if now_cot.replace(tzinfo=None) > s_end_dt + timedelta(minutes=20):
-                    s.status = "lost"
-                    await db.flush()
+                if s.shift_date <= now_cot.date():
+                    end_h, end_m = map(int, s.end_time.split(":")[:2])
+                    s_end_dt = datetime.combine(s.shift_date, datetime.min.time().replace(hour=end_h, minute=end_m))
+                    if now_cot.replace(tzinfo=None) > s_end_dt + timedelta(minutes=20):
+                        s.status = "lost"
+                        await db.flush()
             except Exception:
                 pass
     await db.commit()
@@ -764,33 +765,35 @@ async def start_visit(body: StartVisitRequest, current_user: CurrentUser, db: Db
         geofence_lon = shift.client_rel.longitude
         geofence_radius = shift.client_rel.geofence_radius
 
-    now = datetime.now(timezone.utc)
+    COT_TZ = timezone(timedelta(hours=-5))
+    now_cot = datetime.now(COT_TZ)
+    now_naive = now_cot.replace(tzinfo=None)
     is_late = False
     try:
         start_h, start_m = map(int, shift.start_time.split(":")[:2])
         shift_naive = datetime.combine(shift.shift_date, datetime.min.time().replace(hour=start_h, minute=start_m))
-        scheduled_start = shift_naive.replace(tzinfo=timezone.utc)
         
-        earliest_allowed = scheduled_start - timedelta(minutes=20)
-        latest_allowed = scheduled_start + timedelta(minutes=20)
+        if shift.shift_date == now_cot.date():
+            earliest_allowed = shift_naive - timedelta(minutes=20)
+            latest_allowed = shift_naive + timedelta(minutes=20)
 
-        if now < earliest_allowed:
-            earliest_str = (shift_naive - timedelta(minutes=20)).strftime("%I:%M %p")
-            raise HTTPException(
-                status_code=400,
-                detail=f"Aún no estás en el horario correspondiente. El ingreso se habilita 20 minutos antes (a las {earliest_str})."
-            )
-        
-        if now > latest_allowed:
-            shift.status = "lost"
-            await db.commit()
-            raise HTTPException(
-                status_code=400,
-                detail="⚠️ Visita / Turno PERDIDO: Se ha superado el tiempo máximo de tolerancia de 20 minutos."
-            )
+            if now_naive < earliest_allowed:
+                earliest_str = earliest_allowed.strftime("%I:%M %p")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Aún no estás en el horario correspondiente. El ingreso se habilita 20 minutos antes (a las {earliest_str})."
+                )
+            
+            if now_naive > latest_allowed:
+                shift.status = "lost"
+                await db.commit()
+                raise HTTPException(
+                    status_code=400,
+                    detail="⚠️ Visita / Turno PERDIDO: Se ha superado el tiempo máximo de tolerancia de 20 minutos."
+                )
 
-        if now > scheduled_start:
-            is_late = True
+            if now_naive > shift_naive:
+                is_late = True
     except HTTPException:
         raise
     except Exception as e:
