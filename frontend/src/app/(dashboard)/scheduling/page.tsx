@@ -1073,13 +1073,24 @@ export default function SchedulingPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editEvent ? "Editar Evento" : "Crear Evento de Programación"}</DialogTitle>
-            <DialogDescription>Seleccione empleado, cliente, turno y fecha. El evento quedará pendiente hasta guardarlo.</DialogDescription>
+            <DialogDescription>Seleccione empleado, cliente/sede y horario. El evento quedará listo en la columna de Pendientes para arrastrarlo a los días correspondientes en el calendario.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Plantilla de Turno</label>
-                <select className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value={form.shift_template_id} onChange={(e) => setForm({ ...form, shift_template_id: e.target.value })}>
+                <select className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value={form.shift_template_id} onChange={(e) => {
+                  const tid = e.target.value;
+                  const t = templates.find((t) => t.id === tid);
+                  setForm((prev) => ({
+                    ...prev,
+                    shift_template_id: tid,
+                    name: t ? t.name : prev.name,
+                    start_time: t ? t.start_time : prev.start_time,
+                    end_time: t ? t.end_time : prev.end_time,
+                    color: t && t.color ? t.color : prev.color,
+                  }));
+                }}>
                   <option value="">Sin plantilla</option>
                   {templates.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.start_time}-{t.end_time})</option>)}
                 </select>
@@ -1124,18 +1135,18 @@ export default function SchedulingPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Persona</label>
+                <label className="text-sm font-medium">Persona / Paciente</label>
                 <select className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value={form.persona_id} onChange={(e) => setForm({ ...form, persona_id: e.target.value })} disabled={!form.client_id}>
                   <option value="">{form.client_id ? "Sin persona" : "Seleccione cliente primero"}</option>
                   {personas.map((p) => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Fecha *</label>
-                <Input type="date" value={form.shift_date} onChange={(e) => setForm({ ...form, shift_date: e.target.value })} min={todayStr} />
+                <label className="text-sm font-medium">Color del Evento</label>
+                <input type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="w-full h-10 rounded border cursor-pointer" />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Hora Inicio *</label>
                 <Input type="time" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} />
@@ -1144,50 +1155,16 @@ export default function SchedulingPage() {
                 <label className="text-sm font-medium">Hora Fin *</label>
                 <Input type="time" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Color</label>
-                <input type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="w-full h-10 rounded border cursor-pointer" />
-              </div>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Observaciones</label>
-              <textarea className="flex min-h-[60px] w-full rounded-md border bg-background px-3 py-2 text-sm" value={form.observations} onChange={(e) => setForm({ ...form, observations: e.target.value })} />
-            </div>
-            <div className="border-t pt-4">
-              <p className="text-sm font-medium mb-3">Recurrencia</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Tipo de recurrencia</label>
-                  <select className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value={form.recurrence_type} onChange={(e) => setForm({ ...form, recurrence_type: e.target.value })}>
-                    <option value="none">Sin recurrencia</option>
-                    <option value="daily">Diario</option>
-                    <option value="weekly">Semanal</option>
-                    <option value="biweekly">Quincenal</option>
-                    <option value="monthly">Mensual</option>
-                    <option value="custom">Personalizado (días específicos)</option>
-                  </select>
-                </div>
-                {form.recurrence_type === "custom" && (
-                  <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground">Días (1=Lun..7=Dom)</label>
-                    <Input placeholder="1,2,3,4,5" value={form.recurrence_days} onChange={(e) => setForm({ ...form, recurrence_days: e.target.value })} />
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Fecha fin recurrencia</label>
-                  <Input type="date" value={form.recurrence_end_date} onChange={(e) => setForm({ ...form, recurrence_end_date: e.target.value })} disabled={form.recurrence_type === "none"} min={todayStr} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Máx. ocurrencias</label>
-                  <Input type="number" placeholder="Ej: 12" value={form.max_occurrences} onChange={(e) => setForm({ ...form, max_occurrences: e.target.value })} disabled={form.recurrence_type === "none"} />
-                </div>
-              </div>
+              <textarea className="flex min-h-[60px] w-full rounded-md border bg-background px-3 py-2 text-sm" value={form.observations} onChange={(e) => setForm({ ...form, observations: e.target.value })} placeholder="Instrucciones o detalles de la atención..." />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setFormOpen(false); setEditEvent(null); }}>Cancelar</Button>
-            <Button onClick={addPendingEvent} disabled={!form.employee_id || !form.shift_date || !form.name}>
-              {editEvent ? "Actualizar" : "Agregar a Pendientes"}
+            <Button onClick={addPendingEvent} disabled={!form.employee_id || !form.name}>
+              {editEvent ? "Actualizar Evento" : "Agregar a Pendientes"}
             </Button>
           </DialogFooter>
         </DialogContent>
