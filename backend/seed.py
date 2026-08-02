@@ -494,8 +494,10 @@ async def seed():
         ]
 
         created_client_ids = []
-        if client_count == 0:
-            for cli_def in demo_clients:
+        for cli_def in demo_clients:
+            c_check = await db.execute(text("SELECT id FROM clients WHERE nit = :nit OR name = :name"), {"nit": cli_def["nit"], "name": cli_def["name"]})
+            c_row = c_check.fetchone()
+            if not c_row:
                 cli_id = str(uuid.uuid4())
                 client = Client(
                     id=cli_id, company_id=company_id,
@@ -510,18 +512,13 @@ async def seed():
                 )
                 db.add(client)
                 created_client_ids.append(cli_id)
-            await db.commit()
-            print(f"  Clientes:    {len(demo_clients)} sedes/clientes de prueba creados")
-        else:
-            c_ids_res = await db.execute(text("SELECT id FROM clients WHERE company_id = :cid LIMIT 5"), {"cid": company_id})
-            created_client_ids = [row[0] for row in c_ids_res.fetchall()]
-            print(f"  Clientes:    ya existían ({client_count} encontrados)")
+            else:
+                created_client_ids.append(c_row[0])
+        await db.commit()
+        print(f"  Clientes:    {len(demo_clients)} sedes/clientes verificados/creados")
 
         # 9. Demo Personas linked to clients
-        p_total_res = await db.execute(text("SELECT count(*) FROM personas"))
-        p_total = p_total_res.scalar() or 0
-
-        if p_total < 6 and created_client_ids:
+        if created_client_ids:
             extra_personas = [
                 {
                     "document_number": "43201876", "first_name": "Rosa María", "last_name": "Londoño Ríos",
@@ -557,7 +554,7 @@ async def seed():
                     )
                     db.add(persona)
             await db.commit()
-            print(f"  Pacientes:   {len(extra_personas)} personas/pacientes adicionales creados")
+            print(f"  Pacientes:   {len(extra_personas)} personas/pacientes verificados/creados")
 
         await db.commit()
         print(f"Seed completado:")
