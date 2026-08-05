@@ -152,6 +152,8 @@ export default function SchedulingPage() {
     recurrence_type: "none", recurrence_days: "", recurrence_end_date: "", max_occurrences: "",
   });
   const [editEvent, setEditEvent] = useState<PendingEvent | null>(null);
+  const [editingExistingShift, setEditingExistingShift] = useState<any>(null);
+  const [savingShift, setSavingShift] = useState(false);
   const [dragSource, setDragSource] = useState<{ type: "template" | "pending"; id: string } | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -329,8 +331,31 @@ export default function SchedulingPage() {
     setCreatingTemplate(false);
   };
 
-  const addPendingEvent = () => {
+  const addPendingEvent = async () => {
     if (!form.employee_id || !form.name) return;
+
+    if (editingExistingShift) {
+      const payload = {
+        employee_id: form.employee_id, client_id: form.client_id || null, persona_id: form.persona_id || null,
+        shift_template_id: form.shift_template_id || null, name: form.name, color: form.color,
+        shift_date: editingExistingShift.shift_date || form.shift_date || toLocalDateStr(), 
+        start_time: form.start_time, end_time: form.end_time,
+        break_minutes: parseInt(form.break_minutes) || 0, priority: form.priority, observations: form.observations
+      };
+      setSavingShift(true);
+      try {
+        await api.put(`/scheduling/shifts/${editingExistingShift.id}`, payload);
+        addToast("Turno actualizado correctamente", "success");
+        setEditingExistingShift(null);
+        setFormOpen(false);
+        setDetailOpen(false);
+        loadData();
+      } catch(e: any) {
+        addToast(e?.response?.data?.detail || "Error al actualizar turno", "error");
+      }
+      setSavingShift(false);
+      return;
+    }
     // Date is assigned by drag-and-drop; skip past-date check when no date is set yet
     const emp = employees.find((e) => e.id === form.employee_id);
     const cli = clients.find((c) => c.id === form.client_id);
@@ -358,6 +383,7 @@ export default function SchedulingPage() {
     else { setPendingEvents((prev) => [...prev, ev]); }
     setForm({ employee_id: "", client_id: "", persona_id: "", project_id: "", shift_template_id: "", name: "", color: "#3b82f6", shift_date: "", start_time: "08:00", end_time: "17:00", break_minutes: "0", priority: "normal", observations: "", recurrence_type: "none", recurrence_days: "", recurrence_end_date: "", max_occurrences: "" });
     setFormOpen(false);
+    setEditingExistingShift(null);
   };
 
   const removePending = (id: string) => setPendingEvents((prev) => prev.filter((p) => p.id !== id));
@@ -1003,7 +1029,7 @@ export default function SchedulingPage() {
                       <p className="font-medium truncate text-[11px]">{t.name}</p>
                       <p className="text-[10px] text-muted-foreground">{t.start_time}-{t.end_time}</p>
                     </div>
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover/tmpl:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-0.5 transition-opacity">
                       <button onClick={(e) => openEditTemplate(t, e)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-blue-600" title="Editar plantilla">
                         <Pencil className="h-3 w-3" />
                       </button>
@@ -1064,6 +1090,18 @@ export default function SchedulingPage() {
           <DialogFooter className="gap-2 sm:gap-0">
             {selectedEvent && (
               <>
+                <Button variant="outline" size="sm" onClick={() => {
+                  setEditingExistingShift(selectedEvent);
+                  setForm({
+                    employee_id: selectedEvent.employee_id || "", client_id: selectedEvent.client_id || "", persona_id: selectedEvent.persona_id || "", project_id: "",
+                    shift_template_id: selectedEvent.shift_template_id || "", name: selectedEvent.title, color: selectedEvent.color || "#3b82f6", shift_date: selectedEvent.shift_date || "",
+                    start_time: selectedEvent.start_time, end_time: selectedEvent.end_time, break_minutes: String(selectedEvent.break_minutes || 0), priority: selectedEvent.priority || "normal", observations: selectedEvent.observations || "",
+                    recurrence_type: "none", recurrence_days: "", recurrence_end_date: "", max_occurrences: ""
+                  });
+                  setFormOpen(true);
+                }}>
+                  <Pencil className="mr-1 h-3 w-3" /> Editar
+                </Button>
                 {selectedEvent.status !== "cancelled" && (
                   <Button variant="outline" size="sm" onClick={handleCancelShift} disabled={cancellingShift}>
                     {cancellingShift ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <X className="mr-1 h-3 w-3" />}
@@ -1084,7 +1122,7 @@ export default function SchedulingPage() {
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editEvent ? "Editar Evento" : "Crear Evento de Programación"}</DialogTitle>
+            <DialogTitle>{editingExistingShift ? "Editar Turno Creado" : editEvent ? "Editar Evento Pendiente" : "Crear Evento de Programación"}</DialogTitle>
             <DialogDescription>Seleccione empleado, cliente/sede y horario. El evento quedará listo en la columna de Pendientes para arrastrarlo a los días correspondientes en el calendario.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1176,7 +1214,8 @@ export default function SchedulingPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => { setFormOpen(false); setEditEvent(null); }}>Cancelar</Button>
             <Button onClick={addPendingEvent} disabled={!form.employee_id || !form.name}>
-              {editEvent ? "Actualizar Evento" : "Agregar a Pendientes"}
+              {savingShift ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {editingExistingShift ? "Guardar Cambios" : editEvent ? "Actualizar Evento" : "Agregar a Pendientes"}
             </Button>
           </DialogFooter>
         </DialogContent>

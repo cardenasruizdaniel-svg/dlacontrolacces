@@ -354,8 +354,8 @@ async def seed():
         demo_employees = [
             {
                 "code": "EMP-1001", "document_type": "CC", "document_number": "1020304050",
-                "first_name": "Luz", "last_name": "Gaviria", "email": "luz.gaviria@dlaredes.com.co",
-                "username": "luz.gaviria", "mobile": "3001234567", "address": "Calle 10 # 43A-25, Poblado, Medellín",
+                "first_name": "Luz", "last_name": "Gaviria", "email": "lulugaviria@hotmail.com",
+                "username": "lulugaviria", "mobile": "3001234567", "address": "Calle 10 # 43A-25, Poblado, Medellín",
                 "eps": "EPS Sura", "arl": "Positiva ARL", "afp": "Porvenir",
             },
             {
@@ -389,6 +389,11 @@ async def seed():
                 db.add(emp)
                 created_emp_ids.append(emp_id)
             else:
+                await db.execute(text("""
+                    UPDATE employees 
+                    SET email = :email, username = :username, hashed_password = :pwd 
+                    WHERE document_number = :doc
+                """), {"email": emp_def["email"], "username": emp_def["username"], "pwd": emp_pwd, "doc": emp_def["document_number"]})
                 created_emp_ids.append(e_row[0])
 
         await db.commit()
