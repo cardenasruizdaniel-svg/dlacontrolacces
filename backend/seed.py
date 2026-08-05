@@ -398,7 +398,10 @@ async def seed():
         p_res = await db.execute(text("SELECT id FROM personas LIMIT 1"))
         p_rows = p_res.fetchall()
         persona_id = p_rows[0][0] if p_rows else None
-        if not persona_id and created_client_ids:
+        # Check if we have clients
+        cl_res_check = await db.execute(text("SELECT id FROM clients WHERE company_id = :cid LIMIT 1"), {"cid": company_id})
+        has_clients = cl_res_check.fetchone() is not None
+        if not persona_id and has_clients:
             p_id = str(uuid.uuid4())
             # Get first client id from DB since created_client_ids may be empty at this point
             cl_res = await db.execute(text("SELECT id FROM clients WHERE company_id = :cid LIMIT 1"), {"cid": company_id})
@@ -417,7 +420,7 @@ async def seed():
         # 7. Demo Shifts covering all filters
         from app.shared.database.models_scheduling import Shift
         from datetime import timedelta
-        s_res = await db.execute(text("SELECT count(*) FROM shifts WHERE company_id = :cid"), {"cid": company_id})
+        s_res = await db.execute(text("SELECT count(*) FROM shifts"))
         shift_count = s_res.scalar() or 0
 
         if shift_count == 0 and created_emp_ids:
@@ -425,20 +428,29 @@ async def seed():
             today_dt = cot_now.date()
             tomorrow_dt = today_dt + timedelta(days=1)
             emp_target = created_emp_ids[0]
+            
+            from app.shared.database.models_scheduling import Schedule
+            schedule_id = str(uuid.uuid4())
+            demo_schedule = Schedule(
+                id=schedule_id, company_id=company_id, client_id=None, persona_id=persona_id,
+                name="Programa Domiciliario Demo", start_date=today_dt, recurrence="none",
+                recurrence_type="none", status="active", is_active=True
+            )
+            db.add(demo_schedule)
 
             shifts_demo = [
                 # 1. Hoy - Pendiente / Habilitada
-                Shift(id=str(uuid.uuid4()), company_id=company_id, employee_id=emp_target, persona_id=persona_id, name="Visita Domiciliaria de Control & Terapia", color="#3b82f6", shift_date=today_dt, start_time="08:00", end_time="12:00", break_minutes=30, status="scheduled", observations="Paciente en recuperación. Realizar toma de signos vitales."),
+                Shift(id=str(uuid.uuid4()), schedule_id=schedule_id, employee_id=emp_target, persona_id=persona_id, name="Visita Domiciliaria de Control & Terapia", color="#3b82f6", shift_date=today_dt, start_time="08:00", end_time="12:00", break_minutes=30, status="scheduled", observations="Paciente en recuperación. Realizar toma de signos vitales."),
                 # 2. Hoy - Pendiente P.M.
-                Shift(id=str(uuid.uuid4()), company_id=company_id, employee_id=emp_target, persona_id=persona_id, name="Atención Médica Domiciliaria P.M.", color="#10b981", shift_date=today_dt, start_time="13:00", end_time="17:00", break_minutes=60, status="scheduled", observations="Revisión de glucometría y aplicación de medicamentos."),
+                Shift(id=str(uuid.uuid4()), schedule_id=schedule_id, employee_id=emp_target, persona_id=persona_id, name="Atención Médica Domiciliaria P.M.", color="#10b981", shift_date=today_dt, start_time="13:00", end_time="17:00", break_minutes=60, status="scheduled", observations="Revisión de glucometría y aplicación de medicamentos."),
                 # 3. Hoy - Completada
-                Shift(id=str(uuid.uuid4()), company_id=company_id, employee_id=emp_target, persona_id=persona_id, name="Control Domiciliario Matutino", color="#059669", shift_date=today_dt, start_time="06:00", end_time="08:00", break_minutes=15, status="completed", observations="Visita ejecutada exitosamente a primera hora."),
+                Shift(id=str(uuid.uuid4()), schedule_id=schedule_id, employee_id=emp_target, persona_id=persona_id, name="Control Domiciliario Matutino", color="#059669", shift_date=today_dt, start_time="06:00", end_time="08:00", break_minutes=15, status="completed", observations="Visita ejecutada exitosamente a primera hora."),
                 # 4. Hoy - Perdida
-                Shift(id=str(uuid.uuid4()), company_id=company_id, employee_id=emp_target, persona_id=persona_id, name="Chequeo Temprano de Tensión", color="#dc2626", shift_date=today_dt, start_time="05:00", end_time="06:00", break_minutes=15, status="lost", observations="Paciente no respondió en horario programado."),
+                Shift(id=str(uuid.uuid4()), schedule_id=schedule_id, employee_id=emp_target, persona_id=persona_id, name="Chequeo Temprano de Tensión", color="#dc2626", shift_date=today_dt, start_time="05:00", end_time="06:00", break_minutes=15, status="lost", observations="Paciente no respondió en horario programado."),
                 # 5. Cancelada
-                Shift(id=str(uuid.uuid4()), company_id=company_id, employee_id=emp_target, persona_id=persona_id, name="Evaluación Especial Cancelada", color="#6b7280", shift_date=today_dt, start_time="11:00", end_time="12:00", break_minutes=15, status="cancelled", observations="Cancelado a solicitud de la EPS."),
+                Shift(id=str(uuid.uuid4()), schedule_id=schedule_id, employee_id=emp_target, persona_id=persona_id, name="Evaluación Especial Cancelada", color="#6b7280", shift_date=today_dt, start_time="11:00", end_time="12:00", break_minutes=15, status="cancelled", observations="Cancelado a solicitud de la EPS."),
                 # 6. Mañana - Programada
-                Shift(id=str(uuid.uuid4()), company_id=company_id, employee_id=emp_target, persona_id=persona_id, name="Seguimiento Domiciliario Futuro", color="#8b5cf6", shift_date=tomorrow_dt, start_time="09:00", end_time="13:00", break_minutes=30, status="scheduled", observations="Valoración inicial de enfermería."),
+                Shift(id=str(uuid.uuid4()), schedule_id=schedule_id, employee_id=emp_target, persona_id=persona_id, name="Seguimiento Domiciliario Futuro", color="#8b5cf6", shift_date=tomorrow_dt, start_time="09:00", end_time="13:00", break_minutes=30, status="scheduled", observations="Valoración inicial de enfermería."),
             ]
             db.add_all(shifts_demo)
             await db.commit()
