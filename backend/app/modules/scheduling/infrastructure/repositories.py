@@ -125,7 +125,11 @@ class ShiftRepository:
         self.db = db
 
     async def get_by_id(self, shift_id: str) -> Shift | None:
-        result = await self.db.execute(select(Shift).where(Shift.id == shift_id, Shift.is_deleted == False))
+        result = await self.db.execute(
+            select(Shift)
+            .options(selectinload(Shift.employee), selectinload(Shift.client_rel), selectinload(Shift.persona))
+            .where(Shift.id == shift_id, Shift.is_deleted == False)
+        )
         return result.scalar_one_or_none()
 
     async def create(self, **kwargs: dict) -> Shift:

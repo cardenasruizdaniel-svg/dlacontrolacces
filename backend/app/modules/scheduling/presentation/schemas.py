@@ -107,6 +107,8 @@ class ShiftResponse(BaseModel):
     observations: str | None = None
     employee_name: str | None = None
     client_name: str | None = None
+    client_address: str | None = None
+    client_phone: str | None = None
     persona_name: str | None = None
 
 

@@ -89,12 +89,23 @@ def _shift_to_response(s) -> ShiftResponse:
     emp_name = None
     if hasattr(s, "employee") and s.employee:
         emp_name = f"{s.employee.first_name} {s.employee.last_name}"
+    
     client_name = None
+    client_address = None
+    client_phone = None
     if hasattr(s, "client_rel") and s.client_rel:
         client_name = s.client_rel.name
+        client_address = getattr(s.client_rel, "address", None)
+        client_phone = getattr(s.client_rel, "phone", None)
+        
     persona_name = None
     if hasattr(s, "persona") and s.persona:
         persona_name = f"{s.persona.first_name} {s.persona.last_name}"
+        if not client_address:
+            client_address = getattr(s.persona, "address", None)
+        if not client_phone:
+            client_phone = getattr(s.persona, "phone", None)
+            
     return ShiftResponse(
         id=s.id, schedule_id=s.schedule_id, employee_id=s.employee_id,
         client_id=s.client_id, persona_id=s.persona_id, project_id=s.project_id,
@@ -103,6 +114,7 @@ def _shift_to_response(s) -> ShiftResponse:
         break_minutes=s.break_minutes, priority=s.priority, status=s.status,
         notes=s.notes, observations=s.observations,
         employee_name=emp_name, client_name=client_name, persona_name=persona_name,
+        client_address=client_address, client_phone=client_phone,
     )
 
 

@@ -849,8 +849,9 @@ export default function MobileShiftView() {
                     <span className="text-xs text-slate-400 font-mono">{nextPendingVisit.code || "REG"}</span>
                   </div>
                   <CardTitle className="text-base font-black text-white pt-2">{nextPendingVisit.client_name || nextPendingVisit.name}</CardTitle>
-                  <CardDescription className="text-xs text-slate-400 flex items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5 text-cyan-400" /> {nextPendingVisit.client_address || nextPendingVisit.address || "Dirección asignada"}
+                  <CardDescription className="text-xs text-slate-400 flex flex-col gap-1.5 mt-1">
+                    <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-cyan-400 shrink-0" /> {nextPendingVisit.client_address || nextPendingVisit.address || "Dirección asignada"}</span>
+                    {nextPendingVisit.client_phone && <span className="flex items-center gap-1.5"><PhoneCall className="h-3.5 w-3.5 text-emerald-400 shrink-0" /> {nextPendingVisit.client_phone}</span>}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -862,19 +863,31 @@ export default function MobileShiftView() {
                   {(() => {
                     const timing = evaluateShiftTiming(nextPendingVisit);
                     return (
-                      <Button
-                        size="lg"
-                        onClick={() => openCameraModal("start", nextPendingVisit.id)}
-                        disabled={!timing.canStart || punching}
-                        className={`w-full py-5 font-black text-sm gap-2 ${
-                          timing.canStart
-                            ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg"
-                            : "bg-slate-800 text-slate-500 cursor-not-allowed"
-                        }`}
-                      >
-                        <Play className="h-5 w-5" />
-                        <span>Iniciar Visita (Cámara + GPS)</span>
-                      </Button>
+                      <>
+                        <Button
+                          size="lg"
+                          onClick={() => openCameraModal("start", nextPendingVisit.id)}
+                          disabled={!timing.canStart || punching}
+                          className={`w-full py-5 font-black text-sm gap-2 ${
+                            timing.canStart
+                              ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg"
+                              : "bg-slate-800 text-slate-500 cursor-not-allowed"
+                          }`}
+                        >
+                          <Play className="h-5 w-5" />
+                          <span>Iniciar Visita (Cámara + GPS)</span>
+                        </Button>
+                        {nextPendingVisit.client_address && (
+                          <Button
+                            variant="outline"
+                            onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(nextPendingVisit.client_address)}`, '_blank')}
+                            className="w-full mt-2 font-bold text-xs gap-2 border-slate-700 text-slate-300 hover:bg-slate-800"
+                          >
+                            <Navigation className="h-4 w-4 text-cyan-400" />
+                            Navegar a la ubicación
+                          </Button>
+                        )}
+                      </>
                     );
                   })()}
                 </CardContent>
@@ -891,16 +904,10 @@ export default function MobileShiftView() {
           )}
 
           {/* ACCIONES RÁPIDAS OPERATIVAS */}
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              onClick={() => { setActiveTab("marcar"); window.location.hash = "marcar"; }}
-              className="py-5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs gap-2 rounded-2xl shadow"
-            >
-              <UserCheck className="h-4 w-4" /> Registrar Marcación
-            </Button>
+          <div className="mt-3">
             <Button
               onClick={() => { setActiveTab("visitas"); window.location.hash = "visitas"; }}
-              className="py-5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white font-bold text-xs gap-2 rounded-2xl shadow"
+              className="w-full py-5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white font-bold text-xs gap-2 rounded-2xl shadow"
             >
               <Calendar className="h-4 w-4" /> Ver Mi Programación
             </Button>

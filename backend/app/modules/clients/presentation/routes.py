@@ -157,7 +157,7 @@ async def list_personas(
     client_id: str, current_user: CurrentUser, db: DbSession,
     search: str | None = Query(None), page: int = Query(1, ge=1), page_size: int = Query(25),
 ):
-    from sqlalchemy import select
+    from sqlalchemy import select, or_, func
     from app.shared.database.models_clients import Persona
     stmt = select(Persona).where(Persona.client_id == client_id, Persona.is_deleted == False)
     if search:
