@@ -35,8 +35,15 @@ class ShiftTemplateRepository:
         await self.db.flush()
 
     async def list_by_company(self, company_id: str, skip: int = 0, limit: int = 100) -> tuple[list[ShiftTemplate], int]:
-        query = select(ShiftTemplate).where(ShiftTemplate.company_id == company_id, ShiftTemplate.is_deleted == False)
-        count_q = select(func.count(ShiftTemplate.id)).where(ShiftTemplate.company_id == company_id, ShiftTemplate.is_deleted == False)
+        query = select(ShiftTemplate).where(ShiftTemplate.is_deleted == False)
+        count_q = select(func.count(ShiftTemplate.id)).where(ShiftTemplate.is_deleted == False)
+        if company_id:
+            if company_id == "dla-company-main":
+                comp_filter = (ShiftTemplate.company_id != None)
+            else:
+                comp_filter = (ShiftTemplate.company_id == company_id) | (ShiftTemplate.company_id == None) | (ShiftTemplate.company_id == "dla-company-main")
+            query = query.where(comp_filter)
+            count_q = count_q.where(comp_filter)
         total = (await self.db.execute(count_q)).scalar() or 0
         result = await self.db.execute(query.offset(skip).limit(limit).order_by(ShiftTemplate.name))
         return list(result.scalars().all()), total
@@ -95,8 +102,15 @@ class ScheduleRepository:
         return result.rowcount
 
     async def list_by_company(self, company_id: str, skip: int = 0, limit: int = 25) -> tuple[list[Schedule], int]:
-        query = select(Schedule).where(Schedule.company_id == company_id, Schedule.is_deleted == False)
-        count_q = select(func.count(Schedule.id)).where(Schedule.company_id == company_id, Schedule.is_deleted == False)
+        query = select(Schedule).where(Schedule.is_deleted == False)
+        count_q = select(func.count(Schedule.id)).where(Schedule.is_deleted == False)
+        if company_id:
+            if company_id == "dla-company-main":
+                comp_filter = (Schedule.company_id != None)
+            else:
+                comp_filter = (Schedule.company_id == company_id) | (Schedule.company_id == None) | (Schedule.company_id == "dla-company-main")
+            query = query.where(comp_filter)
+            count_q = count_q.where(comp_filter)
         total = (await self.db.execute(count_q)).scalar() or 0
         result = await self.db.execute(query.offset(skip).limit(limit).order_by(Schedule.created_at.desc()))
         return list(result.scalars().all()), total
@@ -169,38 +183,49 @@ class ShiftRepository:
             ed = date.fromisoformat(end_date)
         except (ValueError, TypeError):
             return []
-        result = await self.db.execute(
-            select(Shift).join(Schedule)
-            .options(selectinload(Shift.employee), selectinload(Shift.client_rel), selectinload(Shift.persona))
-            .where(
-                Schedule.company_id == company_id,
-                Shift.shift_date >= sd,
-                Shift.shift_date <= ed,
-                Shift.is_deleted == False,
-            ).order_by(Shift.shift_date, Shift.start_time)
+            
+        query = select(Shift).join(Schedule).options(selectinload(Shift.employee), selectinload(Shift.client_rel), selectinload(Shift.persona)).where(
+            Shift.shift_date >= sd, Shift.shift_date <= ed, Shift.is_deleted == False
         )
+        if company_id:
+            if company_id == "dla-company-main":
+                comp_filter = (Schedule.company_id != None)
+            else:
+                comp_filter = (Schedule.company_id == company_id) | (Schedule.company_id == None) | (Schedule.company_id == "dla-company-main")
+            query = query.where(comp_filter)
+            
+        result = await self.db.execute(query.order_by(Shift.shift_date, Shift.start_time))
         return list(result.scalars().unique().all())
 
     async def list_by_date(self, company_id: str, shift_date: str) -> list[Shift]:
         try:
             sd = date.fromisoformat(shift_date)
         except (ValueError, TypeError):
-            sd = shift_date
-        result = await self.db.execute(
-            select(Shift).join(Schedule)
-            .options(selectinload(Shift.employee), selectinload(Shift.client_rel), selectinload(Shift.persona))
-            .where(
-                Schedule.company_id == company_id,
-                Shift.shift_date == sd,
-                Shift.is_deleted == False,
-            )
+            return []
+        
+        query = select(Shift).join(Schedule).options(selectinload(Shift.employee), selectinload(Shift.client_rel), selectinload(Shift.persona)).where(
+            Shift.shift_date == sd, Shift.is_deleted == False
         )
+        if company_id:
+            if company_id == "dla-company-main":
+                comp_filter = (Schedule.company_id != None)
+            else:
+                comp_filter = (Schedule.company_id == company_id) | (Schedule.company_id == None) | (Schedule.company_id == "dla-company-main")
+            query = query.where(comp_filter)
+            
+        result = await self.db.execute(query.order_by(Shift.start_time))
         return list(result.scalars().unique().all())
 
     async def count_by_status(self, company_id: str, status_val: str, shift_date: str | None = None) -> int:
         query = select(func.count(Shift.id)).join(Schedule).where(
-            Schedule.company_id == company_id, Shift.status == status_val, Shift.is_deleted == False
+            Shift.status == status_val, Shift.is_deleted == False
         )
+        if company_id:
+            if company_id == "dla-company-main":
+                comp_filter = (Schedule.company_id != None)
+            else:
+                comp_filter = (Schedule.company_id == company_id) | (Schedule.company_id == None) | (Schedule.company_id == "dla-company-main")
+            query = query.where(comp_filter)
         if shift_date:
             try:
                 sd = date.fromisoformat(shift_date)
@@ -357,9 +382,16 @@ class ScheduleSeriesRepository:
         query = (
             select(ScheduleSeries)
             .options(selectinload(ScheduleSeries.employee))
-            .where(ScheduleSeries.company_id == company_id, ScheduleSeries.is_deleted == False)
+            .where(ScheduleSeries.is_deleted == False)
         )
-        count_q = select(func.count(ScheduleSeries.id)).where(ScheduleSeries.company_id == company_id, ScheduleSeries.is_deleted == False)
+        count_q = select(func.count(ScheduleSeries.id)).where(ScheduleSeries.is_deleted == False)
+        if company_id:
+            if company_id == "dla-company-main":
+                comp_filter = (ScheduleSeries.company_id != None)
+            else:
+                comp_filter = (ScheduleSeries.company_id == company_id) | (ScheduleSeries.company_id == None) | (ScheduleSeries.company_id == "dla-company-main")
+            query = query.where(comp_filter)
+            count_q = count_q.where(comp_filter)
         total = (await self.db.execute(count_q)).scalar() or 0
         result = await self.db.execute(query.offset(skip).limit(limit).order_by(ScheduleSeries.created_at.desc()))
         return list(result.scalars().unique().all()), total
