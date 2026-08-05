@@ -242,10 +242,6 @@ class SchedulingService:
         start_time = kwargs.get("start_time", shift.start_time)
         end_time = kwargs.get("end_time", shift.end_time)
 
-        if shift_date is not None or start_time is not None:
-            eval_date = shift_date or shift.shift_date
-            self._validate_future_datetime(eval_date, start_time)
-
         if shift_date is not None:
             from datetime import date as _date
             if isinstance(shift_date, str):

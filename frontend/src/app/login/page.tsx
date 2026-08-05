@@ -13,7 +13,7 @@ function LoginContent() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [loginMode, setLoginMode] = useState<"auto" | "mobile" | "attendance" | "dashboard">("auto");
+  const [showAppSelector, setShowAppSelector] = useState(false);
   const { login } = useAuthStore();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -30,11 +30,7 @@ function LoginContent() {
     setError("");
     try {
       let targetPlatform = "auto";
-      if (loginMode === "mobile" || loginMode === "attendance") {
-        targetPlatform = "mobile";
-      } else if (loginMode === "dashboard") {
-        targetPlatform = "web";
-      } else if (typeof window !== "undefined") {
+      if (typeof window !== "undefined") {
         const isMobileDevice =
           window.innerWidth < 768 ||
           window.matchMedia("(display-mode: standalone)").matches ||
@@ -49,10 +45,6 @@ function LoginContent() {
       const isSuperUser = (loggedUser as any)?.is_superuser || false;
       const role = String((loggedUser as any)?.role_id || (loggedUser as any)?.role_name || "").toLowerCase();
 
-      if (loginMode === "mobile") { router.push("/mobile"); return; }
-      if (loginMode === "attendance") { router.push("/attendance"); return; }
-      if (loginMode === "dashboard") { router.push("/dashboard"); return; }
-
       if (
         redirectParam &&
         redirectParam !== "/attendance" &&
@@ -62,6 +54,15 @@ function LoginContent() {
         redirectParam !== "%2Fmobile"
       ) {
         router.push(redirectParam);
+        return;
+      }
+
+      // If user has both, show selector (unless they are superadmin, then just let them choose or go dashboard)
+      // Actually, if they are admin/superuser they also should just go to dashboard or let them choose?
+      // User requested: "si tiene las dos aplicaciones asignadas que me muestre como dos botones"
+      if (platformAccess === "both") {
+        setShowAppSelector(true);
+        setLoading(false);
         return;
       }
 
@@ -75,33 +76,56 @@ function LoginContent() {
       if (platformAccess === "mobile") {
         router.push("/mobile");
       } else {
-        const isMobileDevice =
-          typeof window !== "undefined" &&
-          (window.innerWidth < 768 ||
-            window.matchMedia("(display-mode: standalone)").matches ||
-            /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
-
-        if (isMobileDevice) {
-          router.push("/mobile");
-        } else {
-          router.push("/dashboard");
-        }
+        router.push("/dashboard");
       }
     } catch (err) {
       const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
       const msg = axiosErr?.response?.data?.detail || axiosErr?.message || "Credenciales inválidas";
       setError(msg);
-    } finally {
       setLoading(false);
     }
   };
 
-  const modeInfo = {
-    auto: { title: "Modo Detectar Automático", desc: "Evalúa tus permisos y tu dispositivo para redirigirte directamente al módulo correspondiente.", color: "border-blue-500/50 bg-blue-500/10 text-blue-300" },
-    mobile: { title: "PWA Campo Operativa", desc: "Diseñada para supervisores y vigilantes: marcaciones GPS, visitas y turnos.", color: "border-cyan-500/50 bg-cyan-500/10 text-cyan-300" },
-    attendance: { title: "PWA Sedes & Kiosk", desc: "Estación fija de control de asistencia para puntos de acceso y sedes.", color: "border-emerald-500/50 bg-emerald-500/10 text-emerald-300" },
-    dashboard: { title: "ERP Web Administrativo", desc: "Consola de administración completa: contratos, nómina, empleados y reportes.", color: "border-purple-500/50 bg-purple-500/10 text-purple-300" },
-  };
+  if (showAppSelector) {
+    return (
+      <div className="relative min-h-screen w-full flex items-center justify-center p-4 bg-slate-950">
+        <Card className="w-full max-w-md shadow-2xl border-slate-800 bg-slate-900 text-white animate-in fade-in zoom-in-95 duration-500">
+          <CardHeader className="text-center pb-2">
+            <div className="mx-auto bg-blue-500/10 p-4 rounded-full mb-3">
+              <Shield className="h-8 w-8 text-cyan-400" />
+            </div>
+            <CardTitle className="text-2xl font-black">Selecciona la Aplicación</CardTitle>
+            <CardDescription className="text-slate-400">
+              Tienes acceso a múltiples plataformas. ¿A dónde deseas ingresar?
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 mt-4">
+            <Button
+              onClick={() => router.push("/dashboard")}
+              className="w-full py-8 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white shadow flex flex-col items-center justify-center gap-2 h-auto"
+            >
+              <Building2 className="h-6 w-6 text-purple-400" />
+              <div className="text-center">
+                <div className="font-bold">ERP Administrativo</div>
+                <div className="text-xs text-slate-400 font-normal mt-1">Gestión de recursos, reportes y programación</div>
+              </div>
+            </Button>
+
+            <Button
+              onClick={() => router.push("/mobile")}
+              className="w-full py-8 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white shadow-xl flex flex-col items-center justify-center gap-2 h-auto"
+            >
+              <Smartphone className="h-6 w-6" />
+              <div className="text-center">
+                <div className="font-bold">PWA Campo (App Móvil)</div>
+                <div className="text-xs text-blue-100 font-normal mt-1">Operativa, marcación de visitas y GPS</div>
+              </div>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen w-full flex items-center justify-center p-4 overflow-hidden bg-slate-950 select-none">
@@ -149,62 +173,6 @@ function LoginContent() {
         </CardHeader>
 
         <CardContent className="pt-5 space-y-5">
-          {/* Dynamic Destination Switcher */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 uppercase tracking-wider">
-              <span>Seleccionar Destino al Ingresar</span>
-              <span className="text-[10px] text-cyan-400 font-mono font-normal">Modo: {loginMode.toUpperCase()}</span>
-            </div>
-
-            <div className="grid grid-cols-4 gap-1 p-1 bg-slate-950/90 rounded-xl border border-slate-800 text-[10px]">
-              <button
-                type="button"
-                onClick={() => setLoginMode("auto")}
-                className={`py-2 px-1 rounded-lg font-bold transition-all duration-300 ${
-                  loginMode === "auto" ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg scale-[1.02]" : "text-slate-400 hover:text-white hover:bg-slate-900"
-                }`}
-              >
-                Auto
-              </button>
-              <button
-                type="button"
-                onClick={() => setLoginMode("mobile")}
-                className={`py-2 px-1 rounded-lg font-bold transition-all duration-300 flex items-center justify-center gap-1 ${
-                  loginMode === "mobile" ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg scale-[1.02]" : "text-slate-400 hover:text-white hover:bg-slate-900"
-                }`}
-              >
-                <Smartphone className="h-3 w-3" /> Campo
-              </button>
-              <button
-                type="button"
-                onClick={() => setLoginMode("attendance")}
-                className={`py-2 px-1 rounded-lg font-bold transition-all duration-300 flex items-center justify-center gap-1 ${
-                  loginMode === "attendance" ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg scale-[1.02]" : "text-slate-400 hover:text-white hover:bg-slate-900"
-                }`}
-              >
-                <ShieldCheck className="h-3 w-3" /> Sedes
-              </button>
-              <button
-                type="button"
-                onClick={() => setLoginMode("dashboard")}
-                className={`py-2 px-1 rounded-lg font-bold transition-all duration-300 flex items-center justify-center gap-1 ${
-                  loginMode === "dashboard" ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg scale-[1.02]" : "text-slate-400 hover:text-white hover:bg-slate-900"
-                }`}
-              >
-                <Building2 className="h-3 w-3" /> ERP Web
-              </button>
-            </div>
-
-            {/* Dynamic Mode Helper Info */}
-            <div className={`p-2.5 rounded-xl border text-[11px] transition-all duration-300 ${modeInfo[loginMode].color}`}>
-              <p className="font-bold flex items-center gap-1.5">
-                <Activity className="h-3.5 w-3.5 animate-pulse" /> {modeInfo[loginMode].title}
-              </p>
-              <p className="text-[10.5px] opacity-90 mt-0.5">{modeInfo[loginMode].desc}</p>
-            </div>
-          </div>
-
-          {/* Form Fields */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-300">Correo Electrónico o Cédula</label>
@@ -265,20 +233,14 @@ function LoginContent() {
           {/* Quick Standalone PWA Links */}
           <div className="pt-3 border-t border-slate-800/80 text-center space-y-2.5">
             <p className="text-[11px] text-slate-400 flex items-center justify-center gap-1 font-medium">
-              <CheckCircle2 className="h-3.5 w-3.5 text-cyan-400" /> Aplicaciones y Estaciones PWA Móviles:
+              <CheckCircle2 className="h-3.5 w-3.5 text-cyan-400" /> Aplicaciones Kiosk:
             </p>
             <div className="flex justify-center items-center gap-3">
               <a
-                href="/mobile"
-                className="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-xs text-blue-300 hover:bg-blue-500/20 transition-all flex items-center gap-1.5 font-bold"
-              >
-                <Smartphone className="h-3.5 w-3.5 text-blue-400" /> PWA Campo
-              </a>
-              <a
                 href="/attendance"
-                className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 hover:bg-emerald-500/20 transition-all flex items-center gap-1.5 font-bold"
+                className="px-4 py-2 w-full rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 hover:bg-emerald-500/20 transition-all flex items-center justify-center gap-1.5 font-bold shadow-lg"
               >
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" /> PWA Sedes (Kiosk)
+                <ShieldCheck className="h-4 w-4 text-emerald-400" /> Ingresar a PWA Sedes (Kiosk)
               </a>
             </div>
           </div>
