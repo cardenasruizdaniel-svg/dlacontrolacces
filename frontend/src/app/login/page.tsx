@@ -45,6 +45,14 @@ function LoginContent() {
       const isSuperUser = (loggedUser as any)?.is_superuser || false;
       const role = String((loggedUser as any)?.role_id || (loggedUser as any)?.role_name || "").toLowerCase();
 
+      // If user has both, show selector (unless they are superadmin, then just let them choose or go dashboard)
+      // User requested: "si tiene las dos aplicaciones asignadas que me muestre como dos botones"
+      if (platformAccess === "both" || isSuperUser || role.includes("admin") || role.includes("super")) {
+        setShowAppSelector(true);
+        setLoading(false);
+        return;
+      }
+
       if (
         redirectParam &&
         redirectParam !== "/attendance" &&
@@ -54,21 +62,6 @@ function LoginContent() {
         redirectParam !== "%2Fmobile"
       ) {
         router.push(redirectParam);
-        return;
-      }
-
-      // If user has both, show selector (unless they are superadmin, then just let them choose or go dashboard)
-      // Actually, if they are admin/superuser they also should just go to dashboard or let them choose?
-      // User requested: "si tiene las dos aplicaciones asignadas que me muestre como dos botones"
-      if (platformAccess === "both") {
-        setShowAppSelector(true);
-        setLoading(false);
-        return;
-      }
-
-      // Administrators & Superusers -> Always go to ERP Web Dashboard
-      if (isSuperUser || role.includes("admin") || role.includes("super") || email.toLowerCase().includes("admin")) {
-        router.push("/dashboard");
         return;
       }
 

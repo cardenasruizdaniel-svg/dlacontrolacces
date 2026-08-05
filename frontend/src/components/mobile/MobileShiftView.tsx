@@ -695,7 +695,7 @@ export default function MobileShiftView() {
       })()}
 
       {/* Navigation Pill Tabs */}
-      <div className="grid grid-cols-5 gap-1 p-1 bg-slate-950/90 rounded-2xl border border-slate-800 text-[10px]">
+      <div className="grid grid-cols-4 gap-1 p-1 bg-slate-950/90 rounded-2xl border border-slate-800 text-[10px]">
         <button
           type="button"
           onClick={() => { setActiveTab("agenda"); window.location.hash = "agenda"; }}
@@ -716,17 +716,6 @@ export default function MobileShiftView() {
         >
           <Calendar className="h-3.5 w-3.5" />
           <span>Visitas</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => { setActiveTab("marcar"); window.location.hash = "marcar"; }}
-          className={`py-2 px-1 rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
-            activeTab === "marcar" ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg" : "text-slate-400 hover:text-white"
-          }`}
-        >
-          <UserCheck className="h-3.5 w-3.5" />
-          <span>Marcación</span>
         </button>
 
         <button
