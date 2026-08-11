@@ -326,7 +326,7 @@ function EmployeeForm({
             Foto Referencial Biometría Facial (App Móvil)
           </label>
           <div className="flex items-center gap-4">
-            <div className="relative h-16 w-16 rounded-full overflow-hidden border-2 border-blue-500 bg-slate-200 flex-shrink-0 flex items-center justify-center shadow-sm">
+            <div className="relative h-20 w-20 rounded-full overflow-hidden border-2 border-blue-500 bg-slate-200 flex-shrink-0 flex items-center justify-center shadow-sm">
               {data.photo_url ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img 
@@ -339,29 +339,59 @@ function EmployeeForm({
               )}
             </div>
             <div className="flex-1 space-y-1.5">
-              <label className="block text-[11px] font-medium text-slate-600">Subir imagen desde equipo o pegar URL direct de la foto</label>
-              <input
-                type="file"
-                accept="image/*"
-                className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      set("photo_url", reader.result as string);
-                    };
-                    reader.readAsDataURL(file);
-                  }
-                }}
-              />
-              <Input
-                type="text"
-                placeholder="O pegar URL directa https://..."
-                value={data.photo_url || ""}
-                onChange={(e) => set("photo_url", e.target.value)}
-                className="h-8 text-xs font-mono bg-white"
-              />
+              {data.photo_url && (data.photo_url.startsWith("data:") || data.photo_url.length > 200) ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-50 border border-emerald-200">
+                    <span className="text-emerald-600 text-lg">✅</span>
+                    <div>
+                      <p className="text-xs font-semibold text-emerald-700">Foto biométrica registrada</p>
+                      <p className="text-[10px] text-emerald-600">Registrada desde la App Móvil. Para reemplazarla, suba una nueva imagen.</p>
+                    </div>
+                  </div>
+                  <label className="block text-[11px] font-medium text-slate-600">Reemplazar foto (opcional)</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          set("photo_url", reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="flex-1 space-y-1.5">
+                  <label className="block text-[11px] font-medium text-slate-600">Subir imagen desde equipo o pegar URL directa de la foto</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          set("photo_url", reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                  <Input
+                    type="text"
+                    placeholder="O pegar URL directa https://..."
+                    value={data.photo_url && data.photo_url.length < 200 ? data.photo_url : ""}
+                    onChange={(e) => set("photo_url", e.target.value)}
+                    className="h-8 text-xs font-mono bg-white"
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
