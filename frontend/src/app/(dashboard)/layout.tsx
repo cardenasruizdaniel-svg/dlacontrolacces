@@ -31,7 +31,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       
       // DEBUG TOAST
       if (typeof window !== "undefined") {
-         alert("Redirigiendo a login porque isAuthenticated es falso. Token actual: " + (localStorage.getItem("access_token") ? "Existe" : "Falta"));
+         // Removed debug alert
       }
 
       if (currentPath && currentPath !== "/" && currentPath !== "/login") {
