@@ -111,7 +111,7 @@ class FacialRecognitionService:
             try:
                 from app.shared.database.models_core import SystemConfig
                 from sqlalchemy import select
-                q = select(SystemConfig).where(SystemConfig.key == "FACE_MATCH_THRESHOLD")
+                q = select(SystemConfig).where(SystemConfig.key == "FACE_RECOGNITION_TOLERANCE")
                 config = (await self.face_repo.db.execute(q)).scalar_one_or_none()
                 if config and config.value:
                     val = float(config.value)
@@ -147,7 +147,7 @@ class FacialRecognitionService:
             try:
                 from app.shared.database.models_core import SystemConfig
                 from sqlalchemy import select
-                q = select(SystemConfig).where(SystemConfig.key == "FACE_MATCH_THRESHOLD")
+                q = select(SystemConfig).where(SystemConfig.key == "FACE_RECOGNITION_TOLERANCE")
                 config = (await self.face_repo.db.execute(q)).scalar_one_or_none()
                 if config and config.value:
                     val = float(config.value)

@@ -940,6 +940,17 @@ async def start_visit(body: StartVisitRequest, current_user: CurrentUser, db: Db
         geofence_lon = shift.client_rel.longitude
         geofence_radius = shift.client_rel.geofence_radius
 
+    # Get tolerance from config
+    tolerance_minutes = 20
+    try:
+        from app.shared.database.models_core import SystemConfig
+        q_conf = select(SystemConfig).where(SystemConfig.key == "SHIFT_LOST_TOLERANCE_MINUTES")
+        config = (await db.execute(q_conf)).scalar_one_or_none()
+        if config and config.value:
+            tolerance_minutes = int(config.value)
+    except Exception:
+        pass
+
     COT_TZ = timezone(timedelta(hours=-5))
     now_cot = datetime.now(COT_TZ)
     now_naive = now_cot.replace(tzinfo=None)
@@ -949,14 +960,14 @@ async def start_visit(body: StartVisitRequest, current_user: CurrentUser, db: Db
         shift_naive = datetime.combine(shift.shift_date, datetime.min.time().replace(hour=start_h, minute=start_m))
         
         if shift.shift_date == now_cot.date():
-            earliest_allowed = shift_naive - timedelta(minutes=20)
-            latest_allowed = shift_naive + timedelta(minutes=20)
+            earliest_allowed = shift_naive - timedelta(minutes=tolerance_minutes)
+            latest_allowed = shift_naive + timedelta(minutes=tolerance_minutes)
 
             if now_naive < earliest_allowed:
                 earliest_str = earliest_allowed.strftime("%I:%M %p")
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Aún no estás en el horario correspondiente. El ingreso se habilita 20 minutos antes (a las {earliest_str})."
+                    detail=f"Aún no estás en el horario correspondiente. El ingreso se habilita {tolerance_minutes} minutos antes (a las {earliest_str})."
                 )
             
             if now_naive > latest_allowed:
@@ -964,7 +975,7 @@ async def start_visit(body: StartVisitRequest, current_user: CurrentUser, db: Db
                 await db.commit()
                 raise HTTPException(
                     status_code=400,
-                    detail="⚠️ Visita / Turno PERDIDO: Se ha superado el tiempo máximo de tolerancia de 20 minutos."
+                    detail=f"⚠️ Visita / Turno PERDIDO: Se ha superado el tiempo máximo de tolerancia de {tolerance_minutes} minutos."
                 )
 
             if now_naive > shift_naive:
