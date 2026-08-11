@@ -657,7 +657,7 @@ export default function SchedulingPage() {
     return days;
   }, [currentDate, view]);
 
-  const hourSlots = useMemo(() => Array.from({ length: 18 }, (_, i) => i + 6), []);
+  const hourSlots = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
 
   const navigate = (dir: number) => {
     const d = new Date(currentDate);
@@ -882,7 +882,7 @@ export default function SchedulingPage() {
                           {dayEvents.map((ev) => {
                             const [sh, sm] = ev.start_time.split(":").map(Number);
                             const [eh, em] = ev.end_time.split(":").map(Number);
-                            const top = (sh - 6) * 48 + (sm / 60) * 48;
+                            const top = sh * 48 + (sm / 60) * 48;
                             const height = Math.max(((eh - sh) * 60 + (em - sm)) / 60 * 48, 20);
                             return (
                               <div key={ev.id} onClick={() => { setSelectedEvent(ev); setDetailOpen(true); }}
@@ -897,7 +897,7 @@ export default function SchedulingPage() {
                           {dayPend.map((ev) => {
                             const [sh, sm] = ev.start_time.split(":").map(Number);
                             const [eh, em] = ev.end_time.split(":").map(Number);
-                            const top = (sh - 6) * 48 + (sm / 60) * 48;
+                            const top = sh * 48 + (sm / 60) * 48;
                             const height = Math.max(((eh - sh) * 60 + (em - sm)) / 60 * 48, 20);
                             return (
                               <div key={ev.id} draggable onDragStart={(e) => handleDragStartPending(e, ev.id)}
