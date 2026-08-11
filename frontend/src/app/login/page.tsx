@@ -252,6 +252,7 @@ function LoginContent() {
                     console.error(err);
                     const detailedError = err?.response?.data?.detail || "Error al registrar rostro. Intente nuevamente.";
                     setError(detailedError);
+                    setShowFaceSetup(false);
                     setLoading(false);
                  });
              });
