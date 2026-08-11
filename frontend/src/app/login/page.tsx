@@ -185,14 +185,8 @@ function LoginContent() {
         return;
       }
 
-      // Superusers go directly to ERP Dashboard
-      if (isSuperUser || role.includes("super")) {
-        router.push("/dashboard");
-        return;
-      }
-
       // If user has both, show selector
-      if (platformAccess === "both" || role.includes("admin")) {
+      if (platformAccess === "both" || role.includes("admin") || isSuperUser || role.includes("super")) {
         setShowAppSelector(true);
         setLoading(false);
         return;
@@ -243,11 +237,7 @@ function LoginContent() {
                     const emailLower = String((user as any)?.email || "").toLowerCase();
                     const isSuperUser = (user as any)?.is_superuser || emailLower === "admin@dlaredes.com.co" || false;
                     const role = String((user as any)?.role_id || (user as any)?.role_name || "").toLowerCase();
-                    if (isSuperUser || role.includes("super")) {
-                      router.push("/dashboard");
-                      return;
-                    }
-                    if (platformAccess === "both" || role.includes("admin")) {
+                    if (platformAccess === "both" || role.includes("admin") || isSuperUser || role.includes("super")) {
                       setShowAppSelector(true);
                       return;
                     }
