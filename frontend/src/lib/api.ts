@@ -1,7 +1,7 @@
 import axios from "axios";
 
-// Force 127.0.0.1:8005/api/v1
-const finalApiUrl = "http://127.0.0.1:8005/api/v1";
+// Use env var in production, fallback to localhost for local dev
+const finalApiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8005/api/v1";
 
 const api = axios.create({
   baseURL: finalApiUrl,
