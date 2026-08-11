@@ -802,7 +802,7 @@ export default function SchedulingPage() {
         </div>
 
         {/* MAIN: Calendar */}
-        <div className="flex-1 flex flex-col min-h-[600px] xl:min-h-0 min-w-0">
+        <div className="flex-1 flex-shrink-0 flex flex-col min-h-[600px] xl:min-h-0 min-w-0">
           {/* Calendar Controls */}
           <div className="flex items-center justify-between mb-2 flex-shrink-0">
             <div className="flex items-center gap-2">
