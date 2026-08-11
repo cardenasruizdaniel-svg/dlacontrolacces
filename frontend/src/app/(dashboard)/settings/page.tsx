@@ -29,6 +29,17 @@ export default function SettingsPage() {
   const [deptInput, setDeptInput] = useState("");
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+  const [wipeDialogOpen, setWipeDialogOpen] = useState(false);
+  const [wipeConfirmText, setWipeConfirmText] = useState("");
+  const [wipeModules, setWipeModules] = useState<{ [key: string]: boolean }>({
+    attendance: false,
+    scheduling: false,
+    payroll: false,
+    clients: false,
+    employees: false,
+  });
+  const [isWiping, setIsWiping] = useState(false);
+
   // System Configuration Hook
   const { configs, loading: loadingConfigs, savingKey, updateConfig } = useSystemConfig();
   const [localConfigs, setLocalConfigs] = useState<{ [key: string]: string }>({});
@@ -136,6 +147,40 @@ export default function SettingsPage() {
     } else {
       showToast("error", res.error || "Error al guardar configuración");
     }
+  };
+
+  const handleWipeDatabase = async () => {
+    const modulesToWipe = Object.entries(wipeModules)
+      .filter(([_, isSelected]) => isSelected)
+      .map(([key, _]) => key);
+
+    if (modulesToWipe.length === 0) {
+      showToast("error", "Debes seleccionar al menos un módulo para borrar.");
+      return;
+    }
+    if (wipeConfirmText !== "BORRAR") {
+      showToast("error", "Debes escribir BORRAR para confirmar.");
+      return;
+    }
+
+    setIsWiping(true);
+    try {
+      await api.post("/system-config/wipe", { modules: modulesToWipe });
+      showToast("success", "Datos borrados exitosamente.");
+      setWipeDialogOpen(false);
+      setWipeConfirmText("");
+      setWipeModules({
+        attendance: false,
+        scheduling: false,
+        payroll: false,
+        clients: false,
+        employees: false,
+      });
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || "Error al borrar la base de datos.";
+      showToast("error", msg);
+    }
+    setIsWiping(false);
   };
 
   return (
@@ -677,7 +722,92 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+        <Card className="border-red-200 bg-red-50/10">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              Restablecimiento del Sistema (Factory Reset)
+            </CardTitle>
+            <CardDescription className="text-red-600/80">
+              Borrado seguro de datos para configurar el sistema para una empresa nueva. 
+              <strong> Su cuenta de Súper Administrador NUNCA será borrada.</strong>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button variant="destructive" className="w-full sm:w-auto" onClick={() => setWipeDialogOpen(true)}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Seleccionar Módulos a Borrar
+            </Button>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Wipe Confirmation Dialog */}
+      <Dialog open={wipeDialogOpen} onOpenChange={setWipeDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-red-600 flex items-center gap-2">
+              <AlertCircle className="h-5 w-5" />
+              Borrado de Base de Datos
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-3">
+            <p className="text-sm text-muted-foreground">
+              Seleccione los módulos que desea eliminar por completo. Esta acción es irreversible.
+            </p>
+            <div className="space-y-3">
+              {[
+                { id: "attendance", label: "Asistencias y Georreferenciación", desc: "Registros de entrada, salida e historial de GPS" },
+                { id: "scheduling", label: "Turnos y Programación", desc: "Turnos asignados y horarios laborales" },
+                { id: "payroll", label: "Nómina y Horas Extras", desc: "Cierres de nómina y cálculos de horas" },
+                { id: "employees", label: "Empleados y RRHH", desc: "Personal, cargos y contratos (Administradores se conservan)" },
+                { id: "clients", label: "Clientes y Sedes", desc: "Sedes de clientes, geocercas y radios" }
+              ].map(mod => (
+                <div key={mod.id} className="flex items-start space-x-3 p-2 border rounded-md hover:bg-slate-50">
+                  <input 
+                    type="checkbox" 
+                    id={`wipe-${mod.id}`}
+                    className="mt-1 h-4 w-4 accent-red-600 rounded border-gray-300 text-red-600 focus:ring-red-600"
+                    checked={wipeModules[mod.id] || false}
+                    onChange={(e) => setWipeModules({...wipeModules, [mod.id]: e.target.checked})}
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <label htmlFor={`wipe-${mod.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
+                      {mod.label}
+                    </label>
+                    <p className="text-xs text-muted-foreground">{mod.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="pt-4 border-t mt-4">
+              <label className="text-sm font-bold text-red-600 mb-2 block">
+                Escriba BORRAR para confirmar
+              </label>
+              <Input 
+                value={wipeConfirmText} 
+                onChange={(e) => setWipeConfirmText(e.target.value)} 
+                placeholder="Escriba BORRAR" 
+                className="border-red-200 focus-visible:ring-red-500 font-bold text-red-600"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setWipeDialogOpen(false); setWipeConfirmText(""); }}>
+              Cancelar
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleWipeDatabase} 
+              disabled={isWiping || wipeConfirmText !== "BORRAR" || !Object.values(wipeModules).some(v => v)}
+            >
+              {isWiping ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              {isWiping ? "Borrando..." : "Ejecutar Borrado Seguro"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog for Add/Edit Catalog Item */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
