@@ -50,9 +50,16 @@ class Settings(BaseSettings):
         if not v or v == "" or "localhost:5432" in v:
             return "sqlite+aiosqlite:///./dla_access.db"
         if v.startswith("postgres://"):
-            return v.replace("postgres://", "postgresql+asyncpg://", 1)
-        if v.startswith("postgresql://") and not v.startswith("postgresql+asyncpg://"):
-            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif v.startswith("postgresql://") and not v.startswith("postgresql+asyncpg://"):
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+            
+        # Fix for asyncpg: replace sslmode with ssl and remove unsupported channel_binding
+        v = v.replace("sslmode=", "ssl=")
+        v = v.replace("&channel_binding=require", "")
+        v = v.replace("?channel_binding=require&", "?")
+        v = v.replace("?channel_binding=require", "")
+        
         return v
 
     # Redis
