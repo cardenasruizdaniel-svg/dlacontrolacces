@@ -80,39 +80,42 @@ export default function FaceScanOverlay({ onCapture, onCancel }: FaceScanOverlay
     const detect = async () => {
       if (video.paused || video.ended || isSuccess) return;
 
-      const detection = await faceapi.detectSingleFace(
-        video, 
-        new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
-      );
+      try {
+        const detection = await faceapi.detectSingleFace(
+          video, 
+          new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
+        );
 
-      if (detection) {
-        // Face found!
-        const box = detection.box;
-        // Validate if face is somewhat centered and reasonably sized
-        const videoWidth = video.videoWidth;
-        const videoHeight = video.videoHeight;
-        
-        const isCentered = 
-          box.x > videoWidth * 0.1 && 
-          box.right < videoWidth * 0.9 &&
-          box.y > videoHeight * 0.1 &&
-          box.bottom < videoHeight * 0.9;
+        if (detection) {
+          const box = detection.box;
+          const videoWidth = video.videoWidth;
+          const videoHeight = video.videoHeight;
           
-        const isLargeEnough = box.width > videoWidth * 0.25;
+          const isCentered = 
+            box.x > videoWidth * 0.1 && 
+            box.right < videoWidth * 0.9 &&
+            box.y > videoHeight * 0.1 &&
+            box.bottom < videoHeight * 0.9;
+            
+          const isLargeEnough = box.width > videoWidth * 0.25;
 
-        if (isCentered && isLargeEnough) {
-          setStatusText("Escaneando rostro... Mantente quieto.");
-          progressRef.current = Math.min(progressRef.current + 3, 100);
+          if (isCentered && isLargeEnough) {
+            setStatusText("Escaneando rostro... Mantente quieto.");
+            progressRef.current = Math.min(progressRef.current + 3, 100);
+          } else {
+            setStatusText("Acércate y centra tu rostro");
+            progressRef.current = Math.max(progressRef.current - 2, 0);
+          }
         } else {
-          setStatusText("Acércate y centra tu rostro");
-          progressRef.current = Math.max(progressRef.current - 2, 0);
+          setStatusText("No se detecta rostro. Ubícate en el óvalo.");
+          progressRef.current = Math.max(progressRef.current - 5, 0);
         }
-      } else {
-        setStatusText("No se detecta rostro. Ubícate en el óvalo.");
-        progressRef.current = Math.max(progressRef.current - 5, 0);
+        
+        setProgress(progressRef.current);
+      } catch (err: any) {
+        console.error("Detect error:", err);
+        setStatusText("Error en IA: " + err.message);
       }
-      
-      setProgress(progressRef.current);
 
       if (progressRef.current >= 100 && !isSuccess) {
         setIsSuccess(true);
