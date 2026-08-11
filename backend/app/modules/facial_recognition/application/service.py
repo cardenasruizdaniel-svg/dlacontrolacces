@@ -18,9 +18,20 @@ class FacialRecognitionService:
         if not employee:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
 
+        # Strip data URI prefix if present
+        if "," in photo_base64:
+            photo_base64 = photo_base64.split(",")[1]
+
         photo_bytes = base64.b64decode(photo_base64)
+        
+        # Try face_recognition library first (requires dlib)
         try:
             import face_recognition
+            use_face_recognition = True
+        except ImportError:
+            use_face_recognition = False
+        
+        if use_face_recognition:
             import numpy as np
             import tempfile
             temp_dir = tempfile.gettempdir()
@@ -36,8 +47,8 @@ class FacialRecognitionService:
             encoding_json = json.dumps(encodings[0].tolist())
             await self.face_repo.update_face_encoding(employee_id, encoding_json)
             return {"message": "Face registered successfully", "encoding_length": len(encodings[0])}
-        except (ImportError, Exception):
-            # Fast OpenCV fallback for cloud deployments without dlib
+        else:
+            # OpenCV fallback for deployments without dlib
             import cv2
             import numpy as np
             nparr = np.frombuffer(photo_bytes, np.uint8)
@@ -64,9 +75,20 @@ class FacialRecognitionService:
         if not employee or not employee.facial_encoding:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Face not registered for this employee")
 
+        # Strip data URI prefix if present
+        if "," in photo_base64:
+            photo_base64 = photo_base64.split(",")[1]
+
         photo_bytes = base64.b64decode(photo_base64)
+        
+        # Check which engine is available
         try:
             import face_recognition
+            use_face_recognition = True
+        except ImportError:
+            use_face_recognition = False
+        
+        if use_face_recognition:
             import numpy as np
             known_encoding = json.loads(employee.facial_encoding)
             known_enc = np.array(known_encoding)
@@ -84,11 +106,25 @@ class FacialRecognitionService:
             if not encodings:
                 return {"verified": False, "score": 0.0, "message": "No face detected"}
 
+            # Get threshold from DB config
+            threshold = 0.60
+            try:
+                from app.shared.database.models_core import SystemConfig
+                from sqlalchemy import select
+                q = select(SystemConfig).where(SystemConfig.key == "FACE_MATCH_THRESHOLD")
+                config = (await self.face_repo.db.execute(q)).scalar_one_or_none()
+                if config and config.value:
+                    val = float(config.value)
+                    threshold = val / 100.0 if val > 1 else val
+            except Exception:
+                pass
+
             distance = face_recognition.face_distance([known_enc], encodings[0])[0]
-            match = distance <= settings.FACE_RECOGNITION_TOLERANCE
             score = round(1.0 - distance, 4)
-            return {"verified": match, "score": score, "message": "Face matched" if match else "Face does not match"}
-        except (ImportError, Exception):
+            match = score >= threshold
+            return {"verified": bool(match), "score": float(score), "message": "Face matched" if match else f"Face mismatch (requiere {int(threshold*100)}% de coincidencia)"}
+        else:
+            # OpenCV fallback
             import cv2
             import numpy as np
             nparr = np.frombuffer(photo_bytes, np.uint8)
@@ -106,11 +142,24 @@ class FacialRecognitionService:
             hist = cv2.calcHist([face_crop], [0], None, [128], [0, 256])
             hist = cv2.normalize(hist, hist).flatten()
 
+            # Get threshold from DB config
+            threshold = 0.60
+            try:
+                from app.shared.database.models_core import SystemConfig
+                from sqlalchemy import select
+                q = select(SystemConfig).where(SystemConfig.key == "FACE_MATCH_THRESHOLD")
+                config = (await self.face_repo.db.execute(q)).scalar_one_or_none()
+                if config and config.value:
+                    val = float(config.value)
+                    threshold = val / 100.0 if val > 1 else val
+            except Exception:
+                pass
+
             try:
                 known = np.array(json.loads(employee.facial_encoding), dtype=np.float32)
                 sim = cv2.compareHist(hist.astype(np.float32), known, cv2.HISTCMP_CORREL)
-                match = sim >= 0.4
-                return {"verified": match, "score": round(float(sim), 4), "message": "Face matched" if match else "Face mismatch"}
+                match = float(sim) >= threshold
+                return {"verified": match, "score": round(float(sim), 4), "message": "Face matched" if match else f"Face mismatch (requiere {int(threshold*100)}% de exactitud)"}
             except Exception:
                 return {"verified": True, "score": 0.95, "message": "Face verified (OpenCV Engine)"}
 

@@ -329,7 +329,11 @@ function EmployeeForm({
             <div className="relative h-16 w-16 rounded-full overflow-hidden border-2 border-blue-500 bg-slate-200 flex-shrink-0 flex items-center justify-center shadow-sm">
               {data.photo_url ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={data.photo_url} alt="Foto Referencial Empleado" className="h-full w-full object-cover" />
+                <img 
+                  src={data.photo_url.startsWith("http") || data.photo_url.startsWith("data:") ? data.photo_url : `data:image/jpeg;base64,${data.photo_url}`} 
+                  alt="Foto Referencial Empleado" 
+                  className="h-full w-full object-cover" 
+                />
               ) : (
                 <span className="text-xs font-bold text-slate-400 uppercase">Sin foto</span>
               )}

@@ -41,7 +41,8 @@ class AuthService:
                 (func.lower(Employee.email) == clean_id) |
                 (func.lower(Employee.document_number) == clean_id) |
                 (func.lower(Employee.username) == clean_id) |
-                (func.lower(Employee.code) == clean_id),
+                (func.lower(Employee.code) == clean_id) |
+                (func.lower(Employee.email).like(f"{clean_id}@%")),
                 Employee.is_deleted == False
             )
         )
@@ -230,6 +231,8 @@ class AuthService:
                 "mfa_enabled": employee.mfa_enabled,
                 "first_login_completed": employee.first_login_completed,
                 "platform_access": employee.platform_access,
+                "photo_url": employee.photo_url,
+                "is_face_registered": bool(employee.facial_encoding),
                 "account_status": employee.account_status,
                 "employee_id": employee.id, "code": employee.code,
             },

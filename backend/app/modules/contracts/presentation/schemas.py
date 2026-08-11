@@ -22,6 +22,9 @@ class ContractCreateRequest(BaseModel):
     daily_hours: float = 8.0
     work_scheme: str = "full_time"
     payment_frequency: str = "monthly"  # daily, weekly, biweekly, monthly
+    payment_method: str | None = None
+    bank_name: str | None = None
+    bank_account_number: str | None = None
     health_provider: str | None = None
     pension_provider: str | None = None
     arl_provider: str | None = None
@@ -53,6 +56,9 @@ class ContractUpdateRequest(BaseModel):
     daily_hours: float | None = None
     work_scheme: str | None = None
     payment_frequency: str | None = None
+    payment_method: str | None = None
+    bank_name: str | None = None
+    bank_account_number: str | None = None
     health_provider: str | None = None
     pension_provider: str | None = None
     arl_provider: str | None = None

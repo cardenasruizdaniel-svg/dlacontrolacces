@@ -91,7 +91,7 @@ class ContractService:
 
         allowed = {"employee_id", "contract_type_id", "code", "start_date", "end_date", "salary",
                     "work_scheme", "weekly_hours", "daily_hours", "notes", "status", "transportation_assistance",
-                    "payment_frequency", "health_provider", "pension_provider", "arl_provider", "risk_level", "is_renewable"}
+                    "payment_frequency", "payment_method", "bank_name", "bank_account_number", "health_provider", "pension_provider", "arl_provider", "risk_level", "is_renewable"}
         filtered = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
         updated = await self.contract_repo.update(contract_id, **filtered)
         return {"id": updated.id, "code": updated.code, "status": updated.status}
@@ -131,6 +131,11 @@ class ContractService:
                     "arl_provider": c.arl_provider or (c.employee.arl if c.employee else None),
                     "risk_level": c.risk_level,
                     "is_renewable": getattr(c, "is_renewable", True),
+                    "is_signed": getattr(c, "is_signed", False),
+                    "signature_url": getattr(c, "signature_url", None),
+                    "payment_method": getattr(c, "payment_method", None),
+                    "bank_name": getattr(c, "bank_name", None),
+                    "bank_account_number": getattr(c, "bank_account_number", None),
                 }
                 for c in items
             ],

@@ -270,10 +270,13 @@ async def list_employee_shifts(
 
 @router.get("/calendar", response_model=list[CalendarEvent])
 async def get_calendar(
-    company_id: str, start_date: str, end_date: str,
     current_user: CurrentUser, db: DbSession,
+    company_id: str | None = Query(None),
+    start_date: str | None = Query(None),
+    end_date: str | None = Query(None),
 ) -> list[CalendarEvent]:
-    shifts = await get_service(db).get_calendar(company_id, start_date, end_date)
+    cid = company_id or getattr(current_user, "company_id", None) or "30de4f4f-e13f-474f-a026-28d990ab523b"
+    shifts = await get_service(db).get_calendar(cid, start_date or "", end_date or "")
     return [_shift_to_calendar_event(s) for s in shifts]
 
 

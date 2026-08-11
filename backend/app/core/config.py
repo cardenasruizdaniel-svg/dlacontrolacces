@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     PASSWORD_LOCKOUT_MINUTES: int = 15
 
     # Facial Recognition
-    FACE_RECOGNITION_TOLERANCE: float = 0.6
+    FACE_RECOGNITION_TOLERANCE: float = 0.4
     FACE_DETECTION_MODEL: str = "hog"
 
     # Payroll - Colombian Legislation 2026

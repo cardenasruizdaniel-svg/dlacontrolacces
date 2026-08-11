@@ -63,6 +63,9 @@ class Contract(BaseModel):
     # hourly = Por horas
     # specific = Obra o labor
     payment_frequency: Mapped[str] = mapped_column(String(20), default="monthly", nullable=False)
+    payment_method: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    bank_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    bank_account_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Descansos y días hábiles
     weekly_rest_day: Mapped[str] = mapped_column(String(10), default="sunday", nullable=False)

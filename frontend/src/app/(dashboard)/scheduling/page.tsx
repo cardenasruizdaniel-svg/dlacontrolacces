@@ -30,6 +30,7 @@ interface PendingEvent {
   priority: string;
   observations: string;
   isClone?: boolean;
+  original_id?: string;
 }
 
 interface CalendarEvent {
@@ -349,7 +350,8 @@ export default function SchedulingPage() {
         setEditingExistingShift(null);
         setFormOpen(false);
         setDetailOpen(false);
-        loadData();
+        loadCalendar();
+        loadSeries();
       } catch(e: any) {
         addToast(e?.response?.data?.detail || "Error al actualizar turno", "error");
       }
@@ -432,8 +434,9 @@ export default function SchedulingPage() {
       addToast(`Ningún evento tiene fecha asignada. Arrastre los eventos al día correspondiente en el calendario antes de guardar.`, "warning");
       return;
     }
-    if (unassigned.length > 0) {
-      addToast(`${unassigned.length} evento(s) en la columna aún sin arrastrar al calendario — se guardarán solo los ${clonedEvents.length} evento(s) ya asignados a días.`, "warning");
+    const unassignedButNotCloned = unassigned.filter((u) => !clonedEvents.some(c => c.original_id === u.id));
+    if (unassignedButNotCloned.length > 0) {
+      addToast(`${unassignedButNotCloned.length} evento(s) creados aún sin arrastrar al calendario. Se omitirán al guardar.`, "warning");
     }
 
     const pastEvents = clonedEvents.filter((e) => isDateOrTimePast(e.shift_date, e.start_time).isPast);
@@ -464,10 +467,11 @@ export default function SchedulingPage() {
         break_minutes: e.break_minutes, priority: e.priority, observations: e.observations || null,
       }));
       const savedIds = new Set(clonedEvents.map((e) => e.id));
+      const savedOriginalIds = new Set(clonedEvents.map((e) => e.original_id).filter(Boolean));
       const res = await api.post("/scheduling/bulk-save", { company_id: companyId, events });
       if (res.data.success) {
-        // Remove only the clones that were saved; keep originals (no shift_date) in left column
-        setPendingEvents((prev) => prev.filter((e) => !savedIds.has(e.id)));
+        // Remove clones that were saved AND their originals from the sidebar
+        setPendingEvents((prev) => prev.filter((e) => !savedIds.has(e.id) && !savedOriginalIds.has(e.id)));
         setConflicts([]);
         loadCalendar();
         addToast(`${events.length} turno(s) guardado(s) correctamente`, "success");
@@ -560,16 +564,19 @@ export default function SchedulingPage() {
     ev.dataTransfer.effectAllowed = "copy";
   };
 
-  const handleDropOnDay = (dateStr: string) => {
-    if (!dragSource) return;
-    if (dragSource.type === "template") {
-      const t = templates.find((t) => t.id === dragSource.id);
-      if (!t) { setDragSource(null); return; }
+  const handleDropOnDay = (e: React.DragEvent, dateStr: string) => {
+    e.preventDefault();
+    const data = e.dataTransfer.getData("text/plain");
+    if (!data) return;
+    
+    const [type, id] = data.split(":");
+    if (type === "template") {
+      const t = templates.find((t) => t.id === id);
+      if (!t) return;
       
       const checkPast = isDateOrTimePast(dateStr, t.start_time);
       if (checkPast.isPast) {
         addToast(checkPast.message, "error");
-        setDragSource(null);
         return;
       }
 
@@ -592,25 +599,38 @@ export default function SchedulingPage() {
         priority: "normal",
         observations: "",
       };
-      setPendingEvents((prev) => [...prev, newEv]);
-    } else if (dragSource.type === "pending") {
-      const original = pendingEvents.find((p) => p.id === dragSource.id);
-      if (!original) { setDragSource(null); return; }
-      const clone: PendingEvent = { ...original, id: uid(), shift_date: dateStr, isClone: true };
-
-      if (clone.employee_id) {
-        const conflicts = findConflictsForEmployee(
-          clone.employee_id, dateStr, clone.start_time, clone.end_time,
-          existingShifts, pendingEvents, clone.id,
+      setPendingEvents((prev) => {
+        // Automatically select if it's the first one, for convenience
+        return [...prev, newEv];
+      });
+    } else if (type === "pending") {
+      const original = pendingEvents.find((p) => p.id === id);
+      if (!original) return;
+      
+      // Instead of leaving the original in the sidebar if it had no date, we can just MOVE it if it had no date, or clone if it already had a date (dragging from calendar)
+      // Actually, standard behavior: if it's dragged from sidebar (no date), move it to the calendar. If dragged from calendar, move it to new day.
+      
+      let conflicts = [];
+      if (original.employee_id) {
+        conflicts = findConflictsForEmployee(
+          original.employee_id, dateStr, original.start_time, original.end_time,
+          existingShifts, pendingEvents, original.id,
         );
         if (conflicts.length > 0) {
           const msgs = conflicts.map((c) => c.detail).join("; ");
           addToast(`Conflicto detectado — ${msgs}. Corrija antes de continuar.`, "error");
-          setDragSource(null);
           return;
         }
       }
-      setPendingEvents((prev) => [...prev, clone]);
+      
+      if (!original.shift_date) {
+        // Dragged from sidebar: Clone it so it can be placed multiple times
+        const clonedEv: PendingEvent = { ...original, id: uid(), shift_date: dateStr, original_id: original.id };
+        setPendingEvents((prev) => [...prev, clonedEv]);
+      } else {
+        // Dragged from calendar to another day: Move it
+        setPendingEvents((prev) => prev.map(p => p.id === id ? { ...p, shift_date: dateStr } : p));
+      }
     }
     setDragSource(null);
   };
@@ -653,8 +673,8 @@ export default function SchedulingPage() {
 
   const pendingForDate = (dateStr: string) => pendingEvents.filter((e) => e.shift_date === dateStr);
 
-  const sourceEvents = useMemo(() => pendingEvents.filter((e) => !e.isClone), [pendingEvents]);
-  const cloneCount = useMemo(() => pendingEvents.filter((e) => e.isClone).length, [pendingEvents]);
+  const sourceEvents = useMemo(() => pendingEvents.filter((e) => !e.shift_date), [pendingEvents]);
+  const cloneCount = useMemo(() => pendingEvents.filter((e) => e.shift_date).length, [pendingEvents]);
 
   const summaryStats = useMemo(() => {
     const scheduled = existingShifts.filter((e) => e.status === "scheduled").length;
@@ -703,7 +723,12 @@ export default function SchedulingPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setTemplateDialogOpen(true)}><Plus className="mr-1 h-3 w-3" />Crear Plantilla</Button>
-          <Button variant="outline" size="sm" onClick={() => setFormOpen(true)}><Plus className="mr-1 h-3 w-3" />Crear Evento</Button>
+          <Button variant="outline" size="sm" onClick={() => {
+            setEditEvent(null);
+            setEditingExistingShift(null);
+            setForm({ employee_id: "", client_id: "", persona_id: "", project_id: "", shift_template_id: "", name: "", color: "#3b82f6", shift_date: "", start_time: "08:00", end_time: "17:00", break_minutes: "0", priority: "normal", observations: "", recurrence_type: "none", recurrence_days: "", recurrence_end_date: "", max_occurrences: "" });
+            setFormOpen(true);
+          }}><Plus className="mr-1 h-3 w-3" />Crear Evento</Button>
           {pendingEvents.length > 0 && (
             <>
               {pendingEvents.filter((e) => !e.employee_id && !!e.shift_date).length > 0 && (
@@ -721,9 +746,9 @@ export default function SchedulingPage() {
         </div>
       </div>
 
-      <div className="flex-1 flex gap-2 min-h-0">
+      <div className="flex-1 flex flex-col xl:flex-row gap-2 min-h-0 overflow-y-auto xl:overflow-hidden">
         {/* LEFT SIDEBAR: Source Events */}
-        <div className="w-72 flex-shrink-0 flex flex-col gap-2">
+        <div className="w-full xl:w-72 flex-shrink-0 flex flex-col gap-2 min-h-[300px] xl:min-h-0">
           <Card className="flex-1 flex flex-col min-h-0">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center justify-between">
@@ -812,7 +837,7 @@ export default function SchedulingPage() {
                     const dayPend = pendingForDate(dateStr).filter((e) => { const h = parseInt(e.start_time.split(":")[0]); return h === hour; });
                     return (
                       <div key={hour} className="flex border-b min-h-[48px]"
-                        onDragOver={(e) => e.preventDefault()} onDrop={() => handleDropOnDay(dateStr)}>
+                        onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)}>
                         <div className="w-14 text-xs text-muted-foreground text-right pr-2 pt-1 flex-shrink-0">{timeStr}</div>
                         <div className="flex-1 relative p-0.5">
                           {dayEvents.map((ev) => (
@@ -847,7 +872,7 @@ export default function SchedulingPage() {
                     const dayPend = pendingForDate(dateStr);
                     return (
                       <div key={dateStr} className={`flex-1 border-r ${isToday ? "bg-primary/5" : ""} ${isPast ? "bg-muted/30" : ""}`}
-                        onDragOver={(e) => e.preventDefault()} onDrop={() => handleDropOnDay(dateStr)}>
+                        onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)}>
                         <div className={`text-center py-1 text-xs font-medium border-b ${isToday ? "text-primary" : ""} ${isPast ? "text-muted-foreground/50" : ""}`}>
                           {daysOfWeek[(d.getDay() + 6) % 7]} {d.getDate()}
                           {isPast && <span className="text-[8px] block text-muted-foreground/40">pasado</span>}
@@ -908,7 +933,7 @@ export default function SchedulingPage() {
                     return (
                       <div key={i}
                         className={`bg-card p-1 min-h-[80px] ${isToday ? "ring-1 ring-primary" : ""} ${!inMonth ? "opacity-30" : ""} ${isPast ? "bg-muted/20" : ""}`}
-                        onDragOver={(e) => e.preventDefault()} onDrop={() => handleDropOnDay(dateStr)}>
+                        onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)}>
                         <div className="flex items-center justify-between">
                           <span className={`text-[10px] ${isToday ? "font-bold text-primary" : isPast ? "text-muted-foreground/40" : "text-muted-foreground"}`}>{d.getDate()}</span>
                           {isPast && <span className="text-[7px] text-muted-foreground/30">X</span>}
@@ -987,7 +1012,7 @@ export default function SchedulingPage() {
         </div>
 
         {/* RIGHT SIDEBAR: Summary + Templates */}
-        <div className="w-56 flex-shrink-0 flex flex-col gap-2">
+        <div className="w-full xl:w-56 flex-shrink-0 flex flex-col gap-2 min-h-[300px] xl:min-h-0">
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm">Resumen</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">

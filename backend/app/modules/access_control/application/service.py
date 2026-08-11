@@ -96,7 +96,7 @@ class AccessControlService:
         self, employee_id: str, latitude: float, longitude: float,
         photo_base64: str | None = None, observations: str | None = None,
         device_id: str | None = None, connection_type: str | None = None,
-        offline_timestamp: str | None = None,
+        offline_timestamp: str | None = None, shift_id: str | None = None,
     ) -> dict:
         now = datetime.now(timezone.utc).isoformat()
 
@@ -130,6 +130,7 @@ class AccessControlService:
             observations=observations, worked_hours=worked_hours,
             overtime_hours=overtime_hours, night_hours=night_hours,
             offline_timestamp=offline_timestamp, is_synced=offline_timestamp is None,
+            shift_id=shift_id,
         )
 
         return {

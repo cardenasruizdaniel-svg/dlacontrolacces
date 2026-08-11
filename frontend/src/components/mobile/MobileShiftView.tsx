@@ -4,32 +4,53 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
+import { useUIStore } from "@/stores/uiStore";
+import { useSystemConfig } from "@/lib/useSystemConfig";
 import { usePWA } from "@/hooks/usePWA";
+import dynamic from "next/dynamic";
 import { saveOfflinePunch, getCachedAgenda, saveCachedAgenda } from "@/lib/offlineStore";
+
+const FaceScanOverlay = dynamic(() => import("./FaceScanOverlay"), { ssr: false });
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import SignatureCanvas from "react-signature-canvas";
 import {
   Clock, MapPin, Camera, CheckCircle2, AlertCircle, RefreshCw,
   LogOut, Play, Square, ShieldCheck, UserCheck, PhoneCall, AlertTriangle,
   FileText, Upload, User, DollarSign, Calendar, Share2, Printer, Download,
-  Edit3, Save, Coffee, Utensils, Navigation, ExternalLink, Send, ShieldAlert, Check
+  Edit3, Save, Coffee, Utensils, Navigation, ExternalLink, Send, ShieldAlert, Check, Moon, Sun, Monitor
 } from "lucide-react";
+import { CuentaDeCobroTemplate } from "@/components/payroll/CuentaDeCobroTemplate";
 
 export default function MobileShiftView() {
+  const html2pdf = typeof window !== "undefined" ? require("html2pdf.js") : null;
   const { user, logout, loadUser } = useAuthStore();
+  const { theme, toggleTheme } = useUIStore();
   const { isOnline, pendingCount, isSyncing, triggerSync } = usePWA();
   const router = useRouter();
+
+  const { configs } = useSystemConfig();
+  const companyLogo = configs.find(c => c.key === "COMPANY_LOGO")?.value;
+  const companyName = configs.find(c => c.key === "COMPANY_NAME")?.value || "DLA Access";
+  const companyNit = configs.find(c => c.key === "COMPANY_NIT")?.value || "NIT o Documento";
+  const companyAddress = configs.find(c => c.key === "COMPANY_ADDRESS")?.value || "Dirección";
+  const companyCityConfig = configs.find(c => c.key === "COMPANY_CITY")?.value || "Ciudad";
+  const companyDeptConfig = configs.find(c => c.key === "COMPANY_DEPARTMENT")?.value || "";
+  const companyCity = companyDeptConfig ? `${companyCityConfig}, ${companyDeptConfig}` : companyCityConfig;
+  const shiftLostTolerance = Number(configs.find(c => c.key === "SHIFT_LOST_TOLERANCE_MINUTES")?.value ?? 20);
+  const shiftStartAlert = Number(configs.find(c => c.key === "SHIFT_START_ALERT_MINUTES")?.value ?? 15);
+  const shiftEndAlert = Number(configs.find(c => c.key === "SHIFT_END_ALERT_MINUTES")?.value ?? 15);
 
   // Active Session & Visit Data
   const [activeSession, setActiveSession] = useState<any | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [punching, setPunching] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"agenda" | "visitas" | "nomina" | "perfil" | "marcar">("agenda");
-  const [filterStatus, setFilterStatus] = useState<"all" | "today" | "pending" | "completed" | "lost" | "cancelled">("all");
+  const [activeTab, setActiveTab] = useState<"agenda" | "visitas" | "nomina" | "perfil">("agenda");
+  const [filterStatus, setFilterStatus] = useState<"all" | "today" | "pending" | "completed" | "lost" | "cancelled" | "in_progress">("all");
 
   // Payroll Summary & Profile State
   const [payrollData, setPayrollData] = useState<any | null>(null);
@@ -41,6 +62,7 @@ export default function MobileShiftView() {
 
   // WebCam Camera Stream & Photo Capture State
   const [cameraModalOpen, setCameraModalOpen] = useState<boolean>(false);
+  const [isFaceScanOpen, setIsFaceScanOpen] = useState<boolean>(false);
   const [cameraPurpose, setCameraPurpose] = useState<"reference" | "start" | "end" | "novedad">("reference");
   const [targetShiftId, setTargetShiftId] = useState<string | null>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -51,6 +73,8 @@ export default function MobileShiftView() {
 
   // Personal Info Edit State
   const [editingPersonal, setEditingPersonal] = useState<boolean>(false);
+    const sigCanvas = useRef<any>(null);
+    const [signatureData, setSignatureData] = useState<string | null>(null);
   const [personalForm, setPersonalForm] = useState({
     mobile: "",
     phone: "",
@@ -78,7 +102,7 @@ export default function MobileShiftView() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace("#", "");
-      if (hash === "visitas" || hash === "nomina" || hash === "perfil" || hash === "marcar") {
+      if (hash === "visitas" || hash === "nomina" || hash === "perfil") {
         setActiveTab(hash as any);
       } else {
         setActiveTab("agenda");
@@ -88,6 +112,69 @@ export default function MobileShiftView() {
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
+
+  // Request Notification Permission
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  const notifiedShifts = useRef<Set<string>>(new Set());
+
+  // Shift alerts logic based on configurations
+  useEffect(() => {
+    const checkAlerts = () => {
+      if ("Notification" in window && Notification.permission === "granted") {
+        const now = new Date();
+        const currentTime = now.getHours() * 60 + now.getMinutes();
+
+        // Check assigned shifts for start alert
+        if (visitList && Array.isArray(visitList)) {
+          visitList.forEach((shift: any) => {
+            if (shift.status === "scheduled" && shift.start_time) {
+              const [sH, sM] = shift.start_time.split(":").map(Number);
+              const shiftTime = sH * 60 + sM;
+              const diff = shiftTime - currentTime;
+              
+              if (shiftStartAlert > 0 && diff > 0 && diff <= shiftStartAlert) {
+                const alertId = `start-${shift.id}`;
+                if (!notifiedShifts.current.has(alertId)) {
+                  new Notification("¡Turno próximo a iniciar!", {
+                    body: `Tu visita "${shift.name}" inicia en ${diff} minutos. ¡Prepárate!`,
+                    icon: "/icons/icon-192x192.png",
+                  });
+                  notifiedShifts.current.add(alertId);
+                }
+              }
+            }
+          });
+        }
+
+        // Check active session for end alert
+        if (activeSession?.active && activeSession.end_time) {
+          const [eH, eM] = activeSession.end_time.split(":").map(Number);
+          const endTime = eH * 60 + eM;
+          const diff = endTime - currentTime;
+          
+          if (shiftEndAlert > 0 && diff > 0 && diff <= shiftEndAlert) {
+            const alertId = `end-${activeSession.id}`;
+            if (!notifiedShifts.current.has(alertId)) {
+              new Notification("¡Turno por finalizar!", {
+                body: `Tu turno actual finaliza en ${diff} minutos. No olvides marcar tu salida.`,
+                icon: "/icons/icon-192x192.png",
+              });
+              notifiedShifts.current.add(alertId);
+            }
+          }
+        }
+      }
+    };
+
+    checkAlerts();
+    const alertInterval = setInterval(checkAlerts, 60000); // check every minute
+    return () => clearInterval(alertInterval);
+  }, [visitList, activeSession, shiftStartAlert, shiftEndAlert]);
 
   // Update clock
   useEffect(() => {
@@ -104,16 +191,25 @@ export default function MobileShiftView() {
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (activeSession?.active) {
-      timer = setInterval(() => {
-        setElapsedSeconds((prev) => prev + 1);
-      }, 1000);
+      const entryTimeStr = activeSession.session?.entry_time;
+      const entryTimeMs = entryTimeStr ? new Date(entryTimeStr).getTime() : new Date().getTime();
+      
+      const updateTimer = () => {
+        const now = new Date().getTime();
+        const diff = Math.floor(Math.max(0, now - entryTimeMs) / 1000);
+        setElapsedSeconds(isNaN(diff) ? 0 : diff);
+      };
+      
+      updateTimer();
+      timer = setInterval(updateTimer, 1000);
     } else {
       setElapsedSeconds(0);
     }
     return () => clearInterval(timer);
-  }, [activeSession?.active]);
+  }, [activeSession]);
 
   const formatElapsed = (seconds: number) => {
+    if (isNaN(seconds)) return "00:00:00";
     const hrs = Math.floor(seconds / 3600).toString().padStart(2, "0");
     const mins = Math.floor((seconds % 3600) / 60).toString().padStart(2, "0");
     const secs = (seconds % 60).toString().padStart(2, "0");
@@ -208,11 +304,18 @@ export default function MobileShiftView() {
     fetchSession();
   }, [fetchSession]);
 
-  // Helper to check if biometric photo is registered
   const checkBiometricRegistered = useCallback((): boolean => {
-    if (employeeProfile?.is_face_registered || (employeeProfile?.photo_url && String(employeeProfile.photo_url).trim() !== "")) {
-      return true;
+    // If we have fresh data from the server, trust the server!
+    if (employeeProfile) {
+      const isRegistered = employeeProfile.is_face_registered || (employeeProfile.photo_url && String(employeeProfile.photo_url).trim() !== "");
+      if (!isRegistered && typeof window !== "undefined") {
+        // Clear local storage if the server says it's not registered
+        localStorage.removeItem("dla_user_photo");
+        localStorage.removeItem("dla_face_registered");
+      }
+      return !!isRegistered;
     }
+
     if ((user as any)?.is_face_registered || ((user as any)?.photo_url && String((user as any).photo_url).trim() !== "")) {
       return true;
     }
@@ -244,10 +347,7 @@ export default function MobileShiftView() {
       const registered = checkBiometricRegistered();
       if (!registered) {
         setCameraPurpose("reference");
-        setCameraModalOpen(true);
-        setTimeout(() => {
-          startCamera();
-        }, 400);
+        setIsFaceScanOpen(true);
       }
     }
   }, [employeeProfile, loading, checkBiometricRegistered]);
@@ -335,10 +435,45 @@ export default function MobileShiftView() {
     setTargetShiftId(shiftId || null);
     setCapturedPhotoBase64(null);
     setObservations("");
-    setCameraModalOpen(true);
-    setTimeout(() => {
-      startCamera();
-    }, 300);
+    
+    if (purpose === "reference") {
+      setIsFaceScanOpen(true);
+    } else {
+      setCameraModalOpen(true);
+      setTimeout(() => {
+        startCamera();
+      }, 300);
+    }
+  };
+
+  // Save Reference Photo Direct (from FaceScan)
+  const handleSaveReferencePhotoDirect = async (photoBase64: string) => {
+    setPunching(true);
+    try {
+      if (navigator.onLine) {
+        const res = await api.post("/mobile/me/reference-photo", { photo_base64: photoBase64 });
+        setStatusMessage("✅ Fotografía de referencia biométrica registrada y guardada exitosamente.");
+        const photoUrl = res.data?.photo_url || photoBase64;
+        setEmployeeProfile((prev: any) => ({ ...prev, photo_url: photoUrl, is_face_registered: true }));
+        if (typeof window !== "undefined") {
+          localStorage.setItem("dla_user_photo", photoUrl);
+          localStorage.setItem("dla_face_registered", "true");
+        }
+      } else {
+        const entry = { type: "reference", photoBase64, timestamp: new Date().toISOString() };
+        // await registerAction(entry);
+        setStatusMessage("✅ Fotografía de referencia guardada offline. Se sincronizará pronto.");
+        if (typeof window !== "undefined") {
+          localStorage.setItem("dla_user_photo", photoBase64);
+          localStorage.setItem("dla_face_registered", "true");
+        }
+      }
+    } catch (error: any) {
+      console.error(error);
+      setStatusMessage("❌ Error guardando la foto de referencia: " + (error.response?.data?.detail || error.message));
+    } finally {
+      setPunching(false);
+    }
   };
 
   // Save Reference Photo
@@ -431,7 +566,8 @@ export default function MobileShiftView() {
       stopCamera();
       setCameraModalOpen(false);
       await fetchSession();
-      setActiveTab("agenda");
+      setActiveTab("visitas");
+      setFilterStatus("in_progress");
     } catch (err: any) {
       console.error("Error iniciando visita:", err);
       const msg = err?.response?.data?.detail || err?.message || "No se pudo iniciar visita";
@@ -535,7 +671,7 @@ export default function MobileShiftView() {
         latitude: location.lat,
         longitude: location.lng,
       });
-      setStatusMessage("✅ Novedad de visita registrada correctamente.");
+      setStatusMessage(res.data?.offline_cached ? res.data.message : "✅ Novedad de visita registrada correctamente.");
       setNovedadModalOpen(false);
       setObservations("");
       await fetchSession();
@@ -555,8 +691,9 @@ export default function MobileShiftView() {
         ...personalForm,
         latitude: location.lat,
         longitude: location.lng,
+        signature_url: signatureData || employeeProfile?.signature_url,
       });
-      setStatusMessage("✅ Datos de contacto actualizados y auditados en el sistema.");
+      setStatusMessage(res.data?.offline_cached ? res.data.message : "✅ Datos de contacto actualizados y auditados en el sistema.");
       setEditingPersonal(false);
       await fetchSession();
     } catch (err: any) {
@@ -567,17 +704,39 @@ export default function MobileShiftView() {
   };
 
   // Payroll Printing & PDF Exporting & WhatsApp Share Handlers
-  const handlePrintPayroll = () => {
-    if (typeof window !== "undefined") {
-      window.print();
-    }
+  
+  const handleExportPDF = async () => {
+    if (!html2pdf) return;
+    const element = document.getElementById("cuenta-de-cobro");
+    if (!element) return;
+    
+    // Temporarily apply styling for PDF
+    element.style.background = "#fff";
+    element.style.color = "#000";
+    element.style.padding = "20px";
+    
+    const opt = {
+      margin:       10,
+      filename:     `Cuenta_de_Cobro_${user?.full_name?.replace(/ /g, "_")}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    
+    await html2pdf().from(element).set(opt).save();
+    
+    // Restore styling
+    element.style.background = "";
+    element.style.color = "";
+    element.style.padding = "";
   };
+
 
   const handleShareWhatsApp = () => {
     if (!payrollData?.latest_record) return;
     const rec = payrollData.latest_record;
     const empName = user?.full_name || "Empleado";
-    const text = `📄 *COMPROBANTE DE NÓMINA - DLA ACCESS ENTERPRISE*\n👤 *Colaborador:* ${empName}\n💰 *Neto a Recibir:* $${Number(rec.net_pay || 0).toLocaleString("es-CO")}\n🗓️ *Período:* ${rec.period_id || "Actual"}\n✅ Firma digital verificada en plataforma.`;
+    const text = `📄 *CUENTA DE COBRO - DLA ACCESS ENTERPRISE*\n👤 *Colaborador:* ${empName}\n💰 *Neto a Recibir:* $${Number(rec.net_pay || 0).toLocaleString("es-CO")}\n🗓️ *Período:* ${rec.period_id || "Actual"}\n✅ Firma digital verificada en plataforma.`;
     const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
     window.open(url, "_blank");
   };
@@ -585,6 +744,7 @@ export default function MobileShiftView() {
   // Evaluate 20-minute window tolerance for a shift
   const evaluateShiftTiming = (shift: any) => {
     if (shift.status === "completed") return { canStart: false, isLost: false, badge: "Completada" };
+    if (shift.status === "salida_anticipada") return { canStart: false, isLost: false, isEarly: true, badge: "Salida Anticipada" };
     if (shift.status === "in_progress") return { canStart: false, isInProgress: true, badge: "En Progreso" };
     if (shift.status === "lost") return { canStart: false, isLost: true, badge: "Turno Perdido" };
 
@@ -611,15 +771,15 @@ export default function MobileShiftView() {
       scheduledEnd = new Date(scheduledStart.getTime() + 8 * 60 * 60 * 1000);
     }
 
-    const earliestStart = new Date(scheduledStart.getTime() - 20 * 60 * 1000);
-    const maxEndTolerance = new Date(scheduledEnd.getTime() + 20 * 60 * 1000);
+    const earliestStart = new Date(scheduledStart.getTime() - shiftLostTolerance * 60 * 1000);
+    const maxEndTolerance = new Date(scheduledEnd.getTime() + shiftLostTolerance * 60 * 1000);
 
     if (now < earliestStart) {
-      return { canStart: false, isTooEarly: true, earliestTime: earliestStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), badge: "Horario Futuro" };
+      return { canStart: true, isTooEarly: true, earliestTime: earliestStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), badge: "Horario Futuro" };
     }
 
     if (now > maxEndTolerance) {
-      return { canStart: false, isLost: true, badge: "Turno Perdido" };
+      return { canStart: true, isLost: true, badge: "Turno Perdido" };
     }
 
     const isLate = now > scheduledStart;
@@ -639,34 +799,180 @@ export default function MobileShiftView() {
     if (filterStatus === "all") return true;
     if (filterStatus === "today") return v.shift_date === todayStr;
     if (filterStatus === "pending") return v.status === "scheduled" || v.status === "pending" || v.status === "in_progress";
-    if (filterStatus === "completed") return v.status === "completed";
+    if (filterStatus === "completed") return v.status === "completed" || v.status === "salida_anticipada";
     if (filterStatus === "lost") return v.status === "lost" || evaluateShiftTiming(v).isLost;
     if (filterStatus === "cancelled") return v.status === "cancelled";
+    if (filterStatus === "in_progress") return v.status === "in_progress";
     return true;
   });
 
-  return (
-    <div className="space-y-4 max-w-2xl mx-auto pb-24 px-2 sm:px-4 text-slate-100 select-none">
-      {/* Top Mobile Bar with Clean Logout */}
-      <div className="flex items-center justify-between p-3 bg-slate-900/90 border border-slate-800 rounded-2xl backdrop-blur-md shadow-lg">
-        <div className="flex items-center gap-2.5">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center font-bold text-white shadow">
-            <ShieldCheck className="h-6 w-6" />
+  const renderVisitCard = (v: any) => {
+    const timing = evaluateShiftTiming(v);
+    
+    // Cálculo del valor generado si la visita fue completada/salida anticipada
+    let valorGenerado = 0;
+    if (v.worked_hours !== undefined && employeeProfile) {
+      if (employeeProfile.salary_type === "hourly" && employeeProfile.hourly_rate) {
+        valorGenerado = v.worked_hours * parseFloat(employeeProfile.hourly_rate);
+      } else if (employeeProfile.shift_value) {
+        valorGenerado = parseFloat(employeeProfile.shift_value);
+      }
+    }
+
+    return (
+      <Card key={v.id} className="bg-card/90 border-border">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h4 className="font-bold text-sm text-card-foreground">{v.client_name || v.name}</h4>
+              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                <MapPin className="h-3 w-3 text-primary" /> {v.client_address || v.address || "Dirección de Sede"}
+              </p>
+            </div>
+            <Badge
+              className={`text-[10px] uppercase font-black ${
+                v.status === "in_progress" ? "bg-amber-500 text-amber-950 animate-pulse" :
+                v.status === "completed" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                v.status === "salida_anticipada" ? "bg-orange-500/20 text-orange-400 border-orange-500/30" :
+                v.status === "lost" ? "bg-rose-500/20 text-rose-400 border-rose-500/30" :
+                "bg-muted text-muted-foreground"
+              }`}
+            >
+              {timing.badge}
+            </Badge>
           </div>
+
+          <div className="text-xs text-muted-foreground bg-background/60 p-2.5 rounded-xl flex items-center justify-between">
+            <span>Fecha: <strong className="text-card-foreground">{v.shift_date || todayStr}</strong> ({v.start_time} - {v.end_time})</span>
+            <span className="font-mono text-[11px] text-primary">{v.code || "VIS"}</span>
+          </div>
+
+          {v.observations && (
+            <p className="text-[11px] text-muted-foreground italic bg-background/40 p-2 rounded-lg">"{v.observations}"</p>
+          )}
+
+          {/* Botón Principal de Acción de Ingreso / Salida al Paciente */}
+          <div className="pt-1">
+            {v.status === "in_progress" ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-background/90 rounded-xl border border-emerald-500/30 text-center space-y-1">
+                  <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold">Tiempo de Visita</p>
+                  <p className="text-2xl font-black font-mono text-emerald-400 tracking-wider">
+                    {formatElapsed(elapsedSeconds)}
+                  </p>
+                </div>
+                <Button
+                  onClick={() => openCameraModal("end", v.id)}
+                  className="w-full bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-card-foreground font-black text-xs gap-2 py-3 rounded-xl shadow-lg animate-pulse"
+                >
+                  <Square className="h-4 w-4 fill-white" /> ⏹️ Finalizar Visita / Registro Salida
+                </Button>
+              </div>
+            ) : v.status === "completed" || v.status === "salida_anticipada" ? (
+              <div className={`p-2 border rounded-xl text-center text-xs font-bold flex flex-col items-center justify-center gap-1.5 ${
+                v.status === "completed" 
+                  ? "bg-emerald-950/60 border-emerald-500/30 text-emerald-300"
+                  : "bg-amber-950/60 border-amber-500/30 text-amber-300"
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  {v.status === "completed" ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                  <span>{v.status === "completed" ? "Visita Finalizada Exitosamente" : "Visita Finalizada (Salida Anticipada)"}</span>
+                </div>
+                {v.worked_hours !== undefined && (
+                  <span className="text-[11px] opacity-90 font-mono flex items-center gap-2 mt-1">
+                    <span>⏱️ Tiempo: {v.worked_hours} hrs</span>
+                    {valorGenerado > 0 && <span>| 💰 Valor: ${valorGenerado.toLocaleString('es-CO')}</span>}
+                  </span>
+                )}
+              </div>
+            ) : v.status === "cancelled" || v.status === "lost" || timing.isLost ? (
+              <div className="p-2 bg-rose-950/60 border border-rose-500/30 rounded-xl text-center text-xs font-bold text-rose-300 flex items-center justify-center gap-1.5">
+                <AlertTriangle className="h-4 w-4 text-rose-400" />
+                <span>Visita {(v.status === "lost" || timing.isLost) ? "Perdida" : "Cancelada"}</span>
+              </div>
+            ) : (
+              <Button
+                onClick={() => openCameraModal("start", v.id)}
+                disabled={!timing.canStart || punching}
+                className={`w-full font-black text-xs gap-2 py-3 rounded-xl shadow-lg ${
+                  timing.canStart
+                    ? "bg-gradient-to-r from-primary to-secondary hover:from-blue-500 hover:to-cyan-500 text-card-foreground"
+                    : "bg-muted text-muted-foreground cursor-not-allowed"
+                }`}
+              >
+                <Play className="h-4 w-4 fill-white" /> ▶️ Ingresar a Visita de {v.patient_name || v.client_name || "Paciente"}
+              </Button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+            {v.client_address ? (
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v.client_address)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2.5 bg-muted hover:bg-muted text-primary rounded-xl font-bold flex items-center justify-center gap-1 text-center"
+              >
+                <Navigation className="h-3.5 w-3.5" /> Abrir Mapa
+              </a>
+            ) : (
+              <button
+                onClick={() => alert("Ubicación de cliente sin coordenadas GPS exactas.")}
+                className="p-2.5 bg-muted/50 text-muted-foreground rounded-xl font-bold flex items-center justify-center gap-1 text-center"
+              >
+                <Navigation className="h-3.5 w-3.5" /> Sin Coordenadas
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                setNovedadShift(v);
+                setObservations("");
+                setNovedadModalOpen(true);
+              }}
+              className="p-2.5 bg-amber-600/80 hover:bg-amber-600 text-card-foreground rounded-xl font-bold flex items-center justify-center gap-1 text-center"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" /> Novedad / Incidencia
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  return (
+    <div className="space-y-4 max-w-2xl mx-auto pb-24 px-2 sm:px-4 text-foreground select-none">
+      {/* Top Mobile Bar with Clean Logout */}
+      <div className="flex items-center justify-between p-3 bg-card/90 border border-border rounded-2xl backdrop-blur-md shadow-lg">
+        <div className="flex items-center gap-2.5">
+          {companyLogo ? (
+            <div className="h-10 w-10 bg-card rounded-xl flex items-center justify-center shadow-inner overflow-hidden p-0.5">
+              <img src={companyLogo} alt="Logo" className="w-full h-full object-contain" />
+            </div>
+          ) : (
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center font-bold text-card-foreground shadow">
+              <ShieldCheck className="h-6 w-6" />
+            </div>
+          )}
           <div>
-            <p className="text-xs font-black text-white">{user?.full_name || "Operador de Campo"}</p>
-            <p className="text-[10px] text-cyan-400 font-mono">PWA CAMPO | {currentTime}</p>
+            <p className="text-xs font-black text-card-foreground">{user?.full_name || "Operador de Campo"}</p>
+            <p className="text-[10px] text-primary font-mono">PWA CAMPO | {currentTime}</p>
           </div>
         </div>
 
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={handleCleanLogout}
-          className="text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 gap-1 text-xs font-bold"
-        >
-          <LogOut className="h-4 w-4" /> Salir
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            {theme === "light" ? <Sun className="h-4 w-4 text-amber-500" /> : theme === "dark" ? <Moon className="h-4 w-4 text-cyan-400" /> : <Monitor className="h-4 w-4 text-muted-foreground" />}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleCleanLogout}
+            className="text-rose-400 hover:text-rose-500 hover:bg-rose-500/10 gap-1 text-xs font-bold px-2"
+          >
+            <LogOut className="h-4 w-4" /> Salir
+          </Button>
+        </div>
       </div>
 
       {/* BANNER REGISTRO OBLIGATORIO DE FOTO INICIAL */}
@@ -680,13 +986,13 @@ export default function MobileShiftView() {
               <Camera className="h-5 w-5 text-amber-400 shrink-0" />
               <span>Registro Biométrico Inicial Obligatorio</span>
             </div>
-            <p className="text-[11px] leading-snug text-slate-300">
+            <p className="text-[11px] leading-snug text-muted-foreground">
               No se detectó una foto facial registrada para su perfil. Debe tomar su fotografía por primera vez para poder activar el inicio de visitas y marcaciones.
             </p>
             <Button
               size="sm"
               onClick={() => openCameraModal("reference")}
-              className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs gap-1.5 py-3 shadow"
+              className="w-full bg-amber-500 hover:bg-amber-600 text-background font-black text-xs gap-1.5 py-3 shadow"
             >
               <Camera className="h-4 w-4" /> Tomar y Registrar Mi Foto Ahora
             </Button>
@@ -694,13 +1000,29 @@ export default function MobileShiftView() {
         );
       })()}
 
+      {/* Face ID Scanning Overlay for Reference Photo */}
+      {isFaceScanOpen && (
+        <FaceScanOverlay 
+          onCapture={(base64Img) => {
+            setCapturedPhotoBase64(base64Img);
+            setIsFaceScanOpen(false);
+            // Auto-save the reference photo once captured successfully
+            setTimeout(() => {
+              // Simulating the save click by directly calling the function since the image is captured
+              handleSaveReferencePhotoDirect(base64Img);
+            }, 100);
+          }}
+          onCancel={() => setIsFaceScanOpen(false)}
+        />
+      )}
+
       {/* Navigation Pill Tabs */}
-      <div className="grid grid-cols-4 gap-1 p-1 bg-slate-950/90 rounded-2xl border border-slate-800 text-[10px]">
+      <div className="grid grid-cols-4 gap-1 p-1 bg-background/90 rounded-2xl border border-border text-[10px]">
         <button
           type="button"
           onClick={() => { setActiveTab("agenda"); window.location.hash = "agenda"; }}
           className={`py-2 px-1 rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
-            activeTab === "agenda" ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg" : "text-slate-400 hover:text-white"
+            activeTab === "agenda" ? "bg-gradient-to-r from-primary to-secondary text-primary-foreground shadow-lg" : "text-muted-foreground hover:text-card-foreground"
           }`}
         >
           <Clock className="h-3.5 w-3.5" />
@@ -711,7 +1033,7 @@ export default function MobileShiftView() {
           type="button"
           onClick={() => { setActiveTab("visitas"); window.location.hash = "visitas"; }}
           className={`py-2 px-1 rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
-            activeTab === "visitas" ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg" : "text-slate-400 hover:text-white"
+            activeTab === "visitas" ? "bg-gradient-to-r from-primary to-secondary text-primary-foreground shadow-lg" : "text-muted-foreground hover:text-card-foreground"
           }`}
         >
           <Calendar className="h-3.5 w-3.5" />
@@ -722,7 +1044,7 @@ export default function MobileShiftView() {
           type="button"
           onClick={() => { setActiveTab("nomina"); window.location.hash = "nomina"; }}
           className={`py-2 px-1 rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
-            activeTab === "nomina" ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg" : "text-slate-400 hover:text-white"
+            activeTab === "nomina" ? "bg-gradient-to-r from-primary to-secondary text-primary-foreground shadow-lg" : "text-muted-foreground hover:text-card-foreground"
           }`}
         >
           <DollarSign className="h-3.5 w-3.5" />
@@ -733,7 +1055,7 @@ export default function MobileShiftView() {
           type="button"
           onClick={() => { setActiveTab("perfil"); window.location.hash = "perfil"; }}
           className={`py-2 px-1 rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
-            activeTab === "perfil" ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg" : "text-slate-400 hover:text-white"
+            activeTab === "perfil" ? "bg-gradient-to-r from-primary to-secondary text-primary-foreground shadow-lg" : "text-muted-foreground hover:text-card-foreground"
           }`}
         >
           <User className="h-3.5 w-3.5" />
@@ -744,7 +1066,7 @@ export default function MobileShiftView() {
       {/* Global Status Message Toast Banner */}
       {statusMessage && (
         <div className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
-          statusMessage.includes("Error") || statusMessage.includes("PERDIDO") ? "bg-rose-500/10 border border-rose-500/30 text-rose-300" : "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300"
+          statusMessage.includes("Error") || statusMessage.includes("PERDIDO") ? "bg-rose-500/10 border border-rose-500/30 text-rose-300" : "bg-emerald-500/20 border border-emerald-500/30 text-emerald-300"
         }`}>
           {statusMessage.includes("Error") || statusMessage.includes("PERDIDO") ? <AlertCircle className="h-4 w-4 shrink-0" /> : <CheckCircle2 className="h-4 w-4 shrink-0" />}
           <span>{statusMessage}</span>
@@ -755,35 +1077,35 @@ export default function MobileShiftView() {
       {activeTab === "agenda" && (
         <div className="space-y-4">
           {/* USER WELCOME & METRICS CARD */}
-          <Card className="bg-slate-900 border-slate-800 text-white shadow-xl">
+          <Card className="bg-card border-border text-foreground shadow-xl">
             <CardContent className="p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center justify-between border-b border-border pb-3">
                 <div>
-                  <h2 className="text-base font-black text-white">{employeeProfile?.company_name || "DLA Redes y Seguridad"}</h2>
-                  <p className="text-xs text-cyan-400 font-mono">{employeeProfile?.job_position || "Operador de Campo"}</p>
+                  <h2 className="text-base font-black text-card-foreground">{companyName}</h2>
+                  <p className="text-xs text-primary font-mono">{employeeProfile?.job_position || "Operador de Campo"}</p>
                 </div>
-                <Badge className="bg-emerald-600 text-white text-[10px] font-bold">
+                <Badge className="bg-emerald-600 text-card-foreground text-[10px] font-bold">
                   {employeeProfile?.status === "active" ? "Activo en Servicio" : "Activo"}
                 </Badge>
               </div>
 
               {/* Indicadores Operativos */}
               <div className="grid grid-cols-4 gap-2 text-center pt-1">
-                <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800">
-                  <p className="text-lg font-black text-cyan-400">98%</p>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase">Cumplimiento</p>
+                <div className="p-2.5 bg-background rounded-xl border border-border">
+                  <p className="text-lg font-black text-primary">98%</p>
+                  <p className="text-[9px] text-muted-foreground font-bold uppercase">Cumplimiento</p>
                 </div>
-                <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+                <div className="p-2.5 bg-background rounded-xl border border-border">
                   <p className="text-lg font-black text-emerald-400">{totalCompleted}</p>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase">Completadas</p>
+                  <p className="text-[9px] text-muted-foreground font-bold uppercase">Completadas</p>
                 </div>
-                <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+                <div className="p-2.5 bg-background rounded-xl border border-border">
                   <p className="text-lg font-black text-amber-400">{totalPending}</p>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase">Pendientes</p>
+                  <p className="text-[9px] text-muted-foreground font-bold uppercase">Pendientes</p>
                 </div>
-                <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+                <div className="p-2.5 bg-background rounded-xl border border-border">
                   <p className="text-lg font-black text-rose-400">{totalLost}</p>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase">Perdidas</p>
+                  <p className="text-[9px] text-muted-foreground font-bold uppercase">Perdidas</p>
                 </div>
               </div>
             </CardContent>
@@ -791,26 +1113,26 @@ export default function MobileShiftView() {
 
           {/* VISITA EN CURSO O PRÓXIMA VISITA DESTACADA */}
           {activeSession?.active && activeSession?.shift ? (
-            <Card className="bg-slate-900 border-2 border-emerald-500/80 text-white shadow-2xl overflow-hidden relative">
+            <Card className="bg-card border-2 border-emerald-500 text-card-foreground shadow-2xl overflow-hidden relative">
               <div className="absolute top-0 left-0 right-0 h-1.5 bg-emerald-500 animate-pulse" />
               <CardContent className="p-5 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <Badge className="bg-emerald-500 text-slate-950 font-black text-xs gap-1">
-                    <span className="h-2 w-2 rounded-full bg-slate-950 animate-ping" /> VISITA EN CURSO
+                <div className="flex items-center justify-between border-b border-border pb-3">
+                  <Badge className="bg-emerald-500 text-background font-black text-xs gap-1">
+                    <span className="h-2 w-2 rounded-full bg-background animate-ping" /> VISITA EN CURSO
                   </Badge>
-                  <span className="text-xs text-slate-400 font-mono">Código: {activeSession.shift.id}</span>
+                  <span className="text-xs text-muted-foreground font-mono">Código: {activeSession.shift.id}</span>
                 </div>
 
                 <div className="space-y-1">
-                  <h2 className="text-lg font-black text-white">{activeSession.shift.name}</h2>
-                  <p className="text-xs text-cyan-300 font-semibold flex items-center gap-1">
+                  <h2 className="text-lg font-black text-card-foreground">{activeSession.shift.name}</h2>
+                  <p className="text-xs text-primary font-semibold flex items-center gap-1">
                     <MapPin className="h-3.5 w-3.5" /> {activeSession.shift.client_name || "Sede Asignada"}
                   </p>
                 </div>
 
                 {/* LIVE CHRONOMETER */}
-                <div className="p-4 bg-slate-950/90 rounded-2xl border border-emerald-500/40 text-center space-y-1">
-                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Tiempo Registrado en Sitio</p>
+                <div className="p-4 bg-background/90 rounded-2xl border border-emerald-500/50 text-center space-y-1">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Tiempo Registrado en Sitio</p>
                   <p className="text-3xl font-black font-mono text-emerald-400 tracking-wider">
                     {formatElapsed(elapsedSeconds)}
                   </p>
@@ -828,75 +1150,35 @@ export default function MobileShiftView() {
               </CardContent>
             </Card>
           ) : (
-            nextPendingVisit ? (
-              <Card className="bg-slate-900 border-2 border-blue-500/50 text-white shadow-xl">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <Badge className="bg-blue-600 text-white text-[10px] uppercase font-bold">
-                      Próxima Visita Pendiente del Día
-                    </Badge>
-                    <span className="text-xs text-slate-400 font-mono">{nextPendingVisit.code || "REG"}</span>
-                  </div>
-                  <CardTitle className="text-base font-black text-white pt-2">{nextPendingVisit.client_name || nextPendingVisit.name}</CardTitle>
-                  <CardDescription className="text-xs text-slate-400 flex flex-col gap-1.5 mt-1">
-                    <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-cyan-400 shrink-0" /> {nextPendingVisit.client_address || nextPendingVisit.address || "Dirección asignada"}</span>
-                    {nextPendingVisit.client_phone && <span className="flex items-center gap-1.5"><PhoneCall className="h-3.5 w-3.5 text-emerald-400 shrink-0" /> {nextPendingVisit.client_phone}</span>}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="p-3 bg-slate-950 rounded-xl flex items-center justify-between text-xs">
-                    <span>Horario Programado:</span>
-                    <strong className="text-cyan-400 font-mono">{nextPendingVisit.scheduled_time || `${nextPendingVisit.start_time} - ${nextPendingVisit.end_time}`}</strong>
-                  </div>
-
-                  {(() => {
-                    const timing = evaluateShiftTiming(nextPendingVisit);
-                    return (
-                      <>
-                        <Button
-                          size="lg"
-                          onClick={() => openCameraModal("start", nextPendingVisit.id)}
-                          disabled={!timing.canStart || punching}
-                          className={`w-full py-5 font-black text-sm gap-2 ${
-                            timing.canStart
-                              ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg"
-                              : "bg-slate-800 text-slate-500 cursor-not-allowed"
-                          }`}
-                        >
-                          <Play className="h-5 w-5" />
-                          <span>Iniciar Visita (Cámara + GPS)</span>
-                        </Button>
-                        {nextPendingVisit.client_address && (
-                          <Button
-                            variant="outline"
-                            onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(nextPendingVisit.client_address)}`, '_blank')}
-                            className="w-full mt-2 font-bold text-xs gap-2 border-slate-700 text-slate-300 hover:bg-slate-800"
-                          >
-                            <Navigation className="h-4 w-4 text-cyan-400" />
-                            Navegar a la ubicación
-                          </Button>
-                        )}
-                      </>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="bg-slate-900 border-slate-800 text-white text-center py-6">
-                <CardContent className="space-y-2">
-                  <CheckCircle2 className="h-10 w-10 text-emerald-400 mx-auto" />
-                  <h3 className="font-bold text-sm">¡Sin Visitas Pendientes por Hoy!</h3>
-                  <p className="text-xs text-slate-400">Has completado todas tus asignaciones para el día de hoy.</p>
-                </CardContent>
-              </Card>
-            )
+            (() => {
+              const todaysVisits = visitList.filter(v => v.shift_date === todayStr);
+              if (todaysVisits.length === 0) {
+                return (
+                  <Card className="bg-card border-border text-foreground text-center py-6">
+                    <CardContent className="space-y-2">
+                      <CheckCircle2 className="h-10 w-10 text-emerald-400 mx-auto" />
+                      <h3 className="font-bold text-sm">¡Sin Visitas Programadas para Hoy!</h3>
+                      <p className="text-xs text-muted-foreground">Disfruta tu día, no tienes asignaciones para hoy.</p>
+                    </CardContent>
+                  </Card>
+                );
+              }
+              return (
+                <div className="space-y-4">
+                  <h3 className="font-bold text-sm flex items-center gap-2 px-1">
+                    <Calendar className="h-4 w-4 text-primary" /> Agenda del Día
+                  </h3>
+                  {todaysVisits.map(renderVisitCard)}
+                </div>
+              );
+            })()
           )}
 
           {/* ACCIONES RÁPIDAS OPERATIVAS */}
           <div className="mt-3">
             <Button
               onClick={() => { setActiveTab("visitas"); window.location.hash = "visitas"; }}
-              className="w-full py-5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white font-bold text-xs gap-2 rounded-2xl shadow"
+              className="w-full py-5 bg-gradient-to-r from-cyan-600 to-teal-600 text-card-foreground font-bold text-xs gap-2 rounded-2xl shadow"
             >
               <Calendar className="h-4 w-4" /> Ver Mi Programación
             </Button>
@@ -908,8 +1190,8 @@ export default function MobileShiftView() {
       {activeTab === "visitas" && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-              <Calendar className="h-4 w-4 text-cyan-400" /> Registro de Visitas Asignadas
+            <h3 className="text-sm font-bold text-card-foreground flex items-center gap-1.5">
+              <Calendar className="h-4 w-4 text-primary" /> Registro de Visitas Asignadas
             </h3>
           </div>
 
@@ -918,6 +1200,7 @@ export default function MobileShiftView() {
             {[
               { id: "all", label: "Todas", count: visitList.length },
               { id: "today", label: "Hoy", count: visitList.filter(v => v.shift_date === todayStr).length },
+              { id: "in_progress", label: "En Curso", count: visitList.filter(v => v.status === "in_progress").length },
               { id: "pending", label: "Pendientes", count: visitList.filter(v => v.status === "scheduled" || v.status === "pending" || v.status === "in_progress").length },
               { id: "completed", label: "Completadas", count: visitList.filter(v => v.status === "completed").length },
               { id: "lost", label: "Perdidas", count: visitList.filter(v => v.status === "lost" || evaluateShiftTiming(v).isLost).length },
@@ -927,12 +1210,12 @@ export default function MobileShiftView() {
                 key={st.id}
                 onClick={() => setFilterStatus(st.id as any)}
                 className={`px-3 py-1.5 rounded-xl font-bold capitalize transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                  filterStatus === st.id ? "bg-cyan-600 text-white shadow" : "bg-slate-900 text-slate-400 hover:text-white border border-slate-800"
+                  filterStatus === st.id ? "bg-cyan-600 text-card-foreground shadow" : "bg-card text-muted-foreground hover:text-card-foreground border border-border"
                 }`}
               >
                 <span>{st.label}</span>
                 <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono ${
-                  filterStatus === st.id ? "bg-white/20 text-white" : "bg-slate-800 text-slate-300"
+                  filterStatus === st.id ? "bg-card/20 text-card-foreground" : "bg-muted text-muted-foreground"
                 }`}>
                   {st.count}
                 </span>
@@ -941,244 +1224,133 @@ export default function MobileShiftView() {
           </div>
 
           {filteredVisitasList.length === 0 ? (
-            <Card className="bg-slate-900 border-slate-800 text-white text-center py-8">
+            <Card className="bg-card border-border text-foreground text-center py-8">
               <CardContent className="space-y-2">
-                <Calendar className="h-10 w-10 text-cyan-400 mx-auto opacity-80" />
-                <h3 className="font-bold text-sm text-white">Sin Visitas Registradas</h3>
-                <p className="text-xs text-slate-400">No se encontraron turnos asignados por tu supervisor para este filtro.</p>
+                <Calendar className="h-10 w-10 text-primary mx-auto opacity-80" />
+                <h3 className="font-bold text-sm text-card-foreground">Sin Visitas Registradas</h3>
+                <p className="text-xs text-muted-foreground">No se encontraron turnos asignados por tu supervisor para este filtro.</p>
               </CardContent>
             </Card>
           ) : (
-            filteredVisitasList.map((v) => {
-              const timing = evaluateShiftTiming(v);
-              return (
-                <Card key={v.id} className="bg-slate-900/90 border-slate-800">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h4 className="font-bold text-sm text-white">{v.client_name || v.name}</h4>
-                        <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                          <MapPin className="h-3 w-3 text-cyan-400" /> {v.client_address || v.address || "Dirección de Sede"}
-                        </p>
-                      </div>
-                      <Badge className={`text-[10px] font-bold ${
-                        v.status === "completed" ? "bg-emerald-600 text-white" :
-                        v.status === "in_progress" ? "bg-emerald-500 text-slate-950 animate-pulse" :
-                        v.status === "lost" ? "bg-rose-600 text-white" : "bg-blue-600 text-white"
-                      }`}>
-                        {timing.badge}
-                      </Badge>
-                    </div>
-
-                    <div className="text-xs text-slate-300 bg-slate-950/60 p-2.5 rounded-xl flex items-center justify-between">
-                      <span>Fecha: <strong className="text-white">{v.shift_date || todayStr}</strong> ({v.start_time} - {v.end_time})</span>
-                      <span className="font-mono text-[11px] text-cyan-400">{v.code || "VIS"}</span>
-                    </div>
-
-                    {v.observations && (
-                      <p className="text-[11px] text-slate-400 italic bg-slate-950/40 p-2 rounded-lg">"{v.observations}"</p>
-                    )}
-
-                    {/* Botón Principal de Acción de Ingreso / Salida al Paciente */}
-                    <div className="pt-1">
-                      {v.status === "in_progress" ? (
-                        <Button
-                          onClick={() => openCameraModal("end", v.id)}
-                          className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs gap-2 py-3 rounded-xl shadow-lg animate-pulse"
-                        >
-                          <Square className="h-4 w-4 fill-white" /> ⏹️ Finalizar Visita de {v.patient_name || v.client_name || "Paciente"}
-                        </Button>
-                      ) : v.status === "completed" ? (
-                        <div className="p-2 bg-emerald-950/60 border border-emerald-500/30 rounded-xl text-center text-xs font-bold text-emerald-300 flex items-center justify-center gap-1.5">
-                          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                          <span>Visita Finalizada Exitosamente</span>
-                        </div>
-                      ) : v.status === "cancelled" || v.status === "lost" ? (
-                        <div className="p-2 bg-rose-950/60 border border-rose-500/30 rounded-xl text-center text-xs font-bold text-rose-300 flex items-center justify-center gap-1.5">
-                          <AlertTriangle className="h-4 w-4 text-rose-400" />
-                          <span>Visita {v.status === "lost" ? "Perdida" : "Cancelada"}</span>
-                        </div>
-                      ) : (
-                        <Button
-                          onClick={() => openCameraModal("start", v.id)}
-                          className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-black text-xs gap-2 py-3 rounded-xl shadow-lg"
-                        >
-                          <Play className="h-4 w-4 fill-white" /> ▶️ Ingresar a Visita de {v.patient_name || v.client_name || "Paciente"}
-                        </Button>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-                      {v.latitude && v.longitude ? (
-                        <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${v.latitude},${v.longitude}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-2.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-xl font-bold flex items-center justify-center gap-1 text-center"
-                        >
-                          <Navigation className="h-3.5 w-3.5" /> Abrir Mapa
-                        </a>
-                      ) : (
-                        <button
-                          onClick={() => alert("Ubicación de cliente sin coordenadas GPS exactas.")}
-                          className="p-2.5 bg-slate-800/50 text-slate-500 rounded-xl font-bold flex items-center justify-center gap-1 text-center"
-                        >
-                          <Navigation className="h-3.5 w-3.5" /> Sin Coordenadas
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => {
-                          setNovedadShift(v);
-                          setObservations("");
-                          setNovedadModalOpen(true);
-                        }}
-                        className="p-2.5 bg-amber-600/80 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-1 text-center"
-                      >
-                        <AlertTriangle className="h-3.5 w-3.5" /> Novedad / Incidencia
-                      </button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
+            filteredVisitasList.map(renderVisitCard)
           )}
-        </div>
-      )}
-
-      {/* ────────────────── TAB 3: CONTROL DE ACCESO (6 MARCACIONES) ────────────────── */}
-      {activeTab === "marcar" && (
-        <div className="space-y-4">
-          <Card className="bg-slate-900 border-slate-800 text-white shadow-xl">
-            <CardHeader>
-              <CardTitle className="text-base font-bold flex items-center gap-2 text-blue-400">
-                <UserCheck className="h-5 w-5" /> Control de Asistencia & Jornada
-              </CardTitle>
-              <CardDescription className="text-xs text-slate-400">
-                Seleccione el tipo de marcación con validación biométrica y ubicación GPS.
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="grid grid-cols-2 gap-3">
-              <Button
-                onClick={() => handleRegisterAccessPunch("entry")}
-                disabled={punching}
-                className="py-6 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs gap-2 rounded-2xl shadow"
-              >
-                <Play className="h-4 w-4" /> Entrada Laboral
-              </Button>
-
-              <Button
-                onClick={() => handleRegisterAccessPunch("exit")}
-                disabled={punching}
-                className="py-6 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-bold text-xs gap-2 rounded-2xl shadow"
-              >
-                <Square className="h-4 w-4" /> Salida Laboral
-              </Button>
-
-              <Button
-                onClick={() => handleRegisterAccessPunch("meal_start")}
-                disabled={punching}
-                className="py-6 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs gap-2 rounded-2xl border border-amber-500/30"
-              >
-                <Utensils className="h-4 w-4" /> Inicio Almuerzo
-              </Button>
-
-              <Button
-                onClick={() => handleRegisterAccessPunch("meal_end")}
-                disabled={punching}
-                className="py-6 bg-slate-800 hover:bg-slate-700 text-emerald-300 font-bold text-xs gap-2 rounded-2xl border border-emerald-500/30"
-              >
-                <Utensils className="h-4 w-4" /> Fin Almuerzo
-              </Button>
-
-              <Button
-                onClick={() => handleRegisterAccessPunch("break_start")}
-                disabled={punching}
-                className="py-6 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs gap-2 rounded-2xl border border-cyan-500/30"
-              >
-                <Coffee className="h-4 w-4" /> Pausa Activa Inicio
-              </Button>
-
-              <Button
-                onClick={() => handleRegisterAccessPunch("break_end")}
-                disabled={punching}
-                className="py-6 bg-slate-800 hover:bg-slate-700 text-teal-300 font-bold text-xs gap-2 rounded-2xl border border-teal-500/30"
-              >
-                <Coffee className="h-4 w-4" /> Pausa Activa Fin
-              </Button>
-            </CardContent>
-          </Card>
         </div>
       )}
 
       {/* ────────────────── TAB 4: MÓDULO NÓMINA (PDF & WHATSAPP) ────────────────── */}
       {activeTab === "nomina" && (
         <div className="space-y-4">
-          <Card className="bg-slate-900 border-slate-800 text-white shadow-xl">
+          <Card className="bg-card border-border text-foreground shadow-xl">
             <CardHeader>
               <CardTitle className="text-base font-bold flex items-center gap-2 text-emerald-400">
-                <DollarSign className="h-5 w-5" /> Mi Desprendible de Pago
+                <DollarSign className="h-5 w-5" /> Generar Cuenta de Cobro
               </CardTitle>
-              <CardDescription className="text-xs text-slate-400">
+              <CardDescription className="text-xs text-muted-foreground">
                 Resumen de haberes y deducciones calculadas para el período actual de nómina.
               </CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-4">
               {payrollData?.latest_record ? (
-                <div className="space-y-3 text-xs">
-                  <div className="p-4 bg-slate-950 rounded-2xl border border-emerald-500/40 text-center space-y-1">
-                    <p className="text-[10px] text-slate-400 uppercase font-bold">Neto a Recibir en Cuenta</p>
+                <div id="cuenta-summary-ui" className="space-y-3 text-xs p-2">
+                  <div style={{ position: "absolute", left: "-9999px", top: "-9999px" }}>
+                    <div id="cuenta-de-cobro">
+                      <CuentaDeCobroTemplate
+                        employee={{ 
+                          ...employeeProfile, 
+                          payment_method: payrollData.latest_record.payment_method,
+                          bank_name: payrollData.latest_record.bank_name,
+                          bank_account_number: payrollData.latest_record.bank_account_number,
+                          signature_url: payrollData.latest_record.signature_url
+                        }}
+                        company={{ 
+                          name: companyName, 
+                          tax_id: companyNit, 
+                          address: companyAddress, 
+                          city: companyCity 
+                        }}
+                        period={{ id: payrollData.latest_record.period_id, start_date: "Inicio Periodo", end_date: "Fin Periodo" }}
+                        amount={Number(payrollData.latest_record.net_pay || 0)}
+                      />
+                    </div>
+                  </div>
+                  <div className="p-4 bg-background rounded-2xl border border-emerald-500/50 text-center space-y-1">
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold">Neto a Recibir en Cuenta</p>
                     <p className="text-3xl font-black font-mono text-emerald-400">
                       ${Number(payrollData.latest_record.net_pay || 0).toLocaleString("es-CO")}
                     </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="p-3 bg-slate-950/60 rounded-xl">
-                      <p className="text-[10px] text-slate-400">Salario Base:</p>
-                      <p className="font-bold font-mono text-white">${Number(payrollData.latest_record.base_salary || 0).toLocaleString("es-CO")}</p>
+                    <div className="p-3 bg-background/60 rounded-xl">
+                      <p className="text-[10px] text-muted-foreground">Salario Base:</p>
+                      <p className="font-bold font-mono text-card-foreground">${Number(payrollData.latest_record.base_salary || 0).toLocaleString("es-CO")}</p>
                     </div>
-                    <div className="p-3 bg-slate-950/60 rounded-xl">
-                      <p className="text-[10px] text-slate-400">Aux. Transporte:</p>
-                      <p className="font-bold font-mono text-white">${Number(payrollData.latest_record.transportation_assistance || 0).toLocaleString("es-CO")}</p>
+                    <div className="p-3 bg-background/60 rounded-xl">
+                      <p className="text-[10px] text-muted-foreground">Aux. Transporte:</p>
+                      <p className="font-bold font-mono text-card-foreground">${Number(payrollData.latest_record.transportation_assistance || 0).toLocaleString("es-CO")}</p>
                     </div>
-                    <div className="p-3 bg-slate-950/60 rounded-xl">
-                      <p className="text-[10px] text-slate-400">Horas Extras / Recargos:</p>
+                    <div className="p-3 bg-background/60 rounded-xl">
+                      <p className="text-[10px] text-muted-foreground">Horas Extras / Recargos:</p>
                       <p className="font-bold font-mono text-emerald-400">${Number(payrollData.latest_record.overtime_value || 0).toLocaleString("es-CO")}</p>
                     </div>
-                    <div className="p-3 bg-slate-950/60 rounded-xl">
-                      <p className="text-[10px] text-slate-400">Deducciones Salud/Pensión:</p>
+                    <div className="p-3 bg-background/60 rounded-xl">
+                      <p className="text-[10px] text-muted-foreground">Deducciones Salud/Pensión:</p>
                       <p className="font-bold font-mono text-rose-400">-${Number((payrollData.latest_record.health_deduction || 0) + (payrollData.latest_record.pension_deduction || 0)).toLocaleString("es-CO")}</p>
                     </div>
                   </div>
 
+                  {/* DETALLE DE TURNOS (TODO LO QUE SE HA HECHO EN EL PERIODO) */}
+                  {payrollData.latest_record.shifts && payrollData.latest_record.shifts.length > 0 && (
+                    <div className="p-3 bg-background/60 rounded-xl border border-border">
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold mb-2">Detalle de Turnos Laborados</p>
+                      <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                        {payrollData.latest_record.shifts.map((s: any) => (
+                          <div key={s.id} className="flex justify-between items-center text-[10px] border-b border-border pb-1">
+                            <div>
+                              <p className="font-bold text-card-foreground">{s.date}</p>
+                              <p className="text-muted-foreground truncate w-32">{s.name}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-primary font-mono text-[10px]">{s.start_time} - {s.end_time}</p>
+                              <p className={`font-bold ${s.status === 'salida_anticipada' ? 'text-orange-400' : 'text-muted-foreground'} text-[9px] uppercase`}>
+                                {s.status.replace("_", " ")}
+                              </p>
+                              {s.worked_hours !== undefined && (
+                                <p className="text-emerald-400 font-bold mt-0.5 text-[11px]">${Number(s.earned_value || 0).toLocaleString("es-CO")} <span className="text-muted-foreground font-normal">({s.worked_hours}h)</span></p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* FIRMA DIGITAL DEL CONTRATO INCORPORADA */}
                   {employeeProfile?.signature_url && (
-                    <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-center space-y-1">
-                      <p className="text-[10px] text-slate-400 uppercase font-bold">Firma Digital del Contrato Incorporada</p>
-                      <img src={employeeProfile.signature_url} alt="Firma Oficial" className="h-12 mx-auto object-contain bg-white/90 p-1 rounded" />
+                    <div className="p-3 bg-background border border-border rounded-xl text-center space-y-1">
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold">Firma Digital del Contrato Incorporada</p>
+                      <img src={employeeProfile.signature_url} alt="Firma Oficial" className="h-12 mx-auto object-contain bg-card/90 p-1 rounded" />
                     </div>
                   )}
 
                   {/* BOTONES DE IMPRESIÓN, PDF Y WHATSAPP */}
                   <div className="grid grid-cols-3 gap-2 pt-2">
-                    <Button onClick={handlePrintPayroll} variant="outline" className="text-xs font-bold gap-1 text-slate-200 border-slate-700">
-                      <Printer className="h-3.5 w-3.5 text-cyan-400" /> Imprimir
+                    <Button onClick={handleExportPDF} variant="outline" className="text-xs font-bold gap-1 text-foreground border-border">
+                      <Printer className="h-3.5 w-3.5 text-primary" /> Imprimir
                     </Button>
-                    <Button onClick={handlePrintPayroll} variant="outline" className="text-xs font-bold gap-1 text-slate-200 border-slate-700">
+                    <Button onClick={handleExportPDF} variant="outline" className="text-xs font-bold gap-1 text-foreground border-border">
                       <Download className="h-3.5 w-3.5 text-emerald-400" /> Exportar PDF
                     </Button>
-                    <Button onClick={handleShareWhatsApp} className="text-xs font-bold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <Button onClick={handleShareWhatsApp} className="text-xs font-bold gap-1 bg-emerald-600 hover:bg-emerald-700 text-card-foreground">
                       <Share2 className="h-3.5 w-3.5" /> WhatsApp
                     </Button>
                   </div>
                 </div>
               ) : (
-                <div className="p-6 bg-slate-950 rounded-2xl text-center text-xs text-slate-400 space-y-1">
-                  <FileText className="h-8 w-8 text-cyan-400 mx-auto" />
-                  <p className="font-bold text-white">Nómina del Período Actual</p>
+                <div className="p-6 bg-background rounded-2xl text-center text-xs text-muted-foreground space-y-1">
+                  <FileText className="h-8 w-8 text-primary mx-auto" />
+                  <p className="font-bold text-card-foreground">Nómina del Período Actual</p>
                   <p>Salario pactado según contrato y tiempo laborado en campo.</p>
                 </div>
               )}
@@ -1195,44 +1367,44 @@ export default function MobileShiftView() {
             const hasPhoto = !!(currentPhoto && currentPhoto.trim());
 
             return (
-              <Card className="bg-slate-900 border-slate-800 text-white shadow-xl">
+              <Card className="bg-card border-border text-foreground shadow-xl">
                 <CardHeader className="text-center pb-2">
                   <div className="mx-auto relative">
                     {hasPhoto ? (
                       <img src={currentPhoto} alt="Foto Oficial" className="h-28 w-28 rounded-full object-cover border-4 border-emerald-500 shadow-xl mx-auto" />
                     ) : (
-                      <div className="h-28 w-28 rounded-full bg-slate-800 border-4 border-amber-500 flex items-center justify-center text-amber-400 mx-auto">
+                      <div className="h-28 w-28 rounded-full bg-muted border-4 border-amber-500 flex items-center justify-center text-amber-400 mx-auto">
                         <User className="h-14 w-14" />
                       </div>
                     )}
                   </div>
 
-                  <CardTitle className="text-lg font-black text-white pt-2">{user?.full_name}</CardTitle>
-                  <CardDescription className="text-xs text-cyan-400 font-mono">
+                  <CardTitle className="text-lg font-black text-card-foreground pt-2">{user?.full_name}</CardTitle>
+                  <CardDescription className="text-xs text-primary font-mono">
                     {employeeProfile?.job_position || "Operador de Campo"} | {user?.email}
                   </CardDescription>
                 </CardHeader>
 
                 <CardContent className="space-y-4 text-xs">
                   {/* DATOS ADMINISTRATIVOS ESTRICTAMENTE BLOQUEADOS */}
-                  <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Datos Administrativos (Solo Lectura - ERP)</p>
+                  <div className="p-3 bg-background rounded-2xl border border-border space-y-2">
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Datos Administrativos (Solo Lectura - ERP)</p>
                     <div className="grid grid-cols-2 gap-2">
-                      <div><span className="text-slate-500">Documento Cédula:</span> <p className="font-bold font-mono text-white">{employeeProfile?.document_number || "—"}</p></div>
-                      <div><span className="text-slate-500">Código Empleado:</span> <p className="font-bold font-mono text-white">{employeeProfile?.code || "—"}</p></div>
-                      <div><span className="text-slate-500">EPS (Salud):</span> <p className="font-bold text-white">{employeeProfile?.eps || "EPS Sura"}</p></div>
-                      <div><span className="text-slate-500">ARL (Riesgos):</span> <p className="font-bold text-white">{employeeProfile?.arl || "Positiva ARL"}</p></div>
-                      <div><span className="text-slate-500">Fondo Pensiones:</span> <p className="font-bold text-white">{employeeProfile?.afp || "Porvenir S.A."}</p></div>
-                      <div><span className="text-slate-500">Caja Compensación:</span> <p className="font-bold text-white">{employeeProfile?.caja_compensacion || "Comfama"}</p></div>
+                      <div><span className="text-muted-foreground">Documento Cédula:</span> <p className="font-bold font-mono text-card-foreground">{employeeProfile?.document_number || "—"}</p></div>
+                      <div><span className="text-muted-foreground">Código Empleado:</span> <p className="font-bold font-mono text-card-foreground">{employeeProfile?.code || "—"}</p></div>
+                      <div><span className="text-muted-foreground">EPS (Salud):</span> <p className="font-bold text-card-foreground">{employeeProfile?.eps || "EPS Sura"}</p></div>
+                      <div><span className="text-muted-foreground">ARL (Riesgos):</span> <p className="font-bold text-card-foreground">{employeeProfile?.arl || "Positiva ARL"}</p></div>
+                      <div><span className="text-muted-foreground">Fondo Pensiones:</span> <p className="font-bold text-card-foreground">{employeeProfile?.afp || "Porvenir S.A."}</p></div>
+                      <div><span className="text-muted-foreground">Caja Compensación:</span> <p className="font-bold text-card-foreground">{employeeProfile?.caja_compensacion || "Comfama"}</p></div>
                     </div>
                   </div>
 
                   {/* FORMULARIO EDITABLE DE CONTACTO CON AUDITORÍA */}
-                  <div className="p-3 bg-slate-950 rounded-2xl border border-cyan-500/30 space-y-3">
+                  <div className="p-3 bg-background rounded-2xl border border-cyan-500/30 space-y-3">
                     <div className="flex items-center justify-between">
-                      <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider">Datos de Contacto Personales Editables</p>
+                      <p className="text-[10px] text-primary font-bold uppercase tracking-wider">Datos de Contacto Personales Editables</p>
                       {!editingPersonal ? (
-                        <button onClick={() => setEditingPersonal(true)} className="text-cyan-400 font-bold text-xs flex items-center gap-1 hover:underline">
+                        <button onClick={() => setEditingPersonal(true)} className="text-primary font-bold text-xs flex items-center gap-1 hover:underline">
                           <Edit3 className="h-3.5 w-3.5" /> Editar Contacto
                         </button>
                       ) : (
@@ -1245,75 +1417,75 @@ export default function MobileShiftView() {
                     {editingPersonal ? (
                       <div className="space-y-3 pt-1">
                         <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Celular / Teléfono Móvil</label>
+                          <label className="text-[10px] text-muted-foreground font-bold">Celular / Teléfono Móvil</label>
                           <Input
                             value={personalForm.mobile}
                             onChange={(e) => setPersonalForm({ ...personalForm, mobile: e.target.value })}
-                            className="bg-slate-900 border-slate-700 text-white text-xs"
+                            className="bg-card border-border text-card-foreground text-xs"
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Dirección Residencial</label>
+                          <label className="text-[10px] text-muted-foreground font-bold">Dirección Residencial</label>
                           <Input
                             value={personalForm.address}
                             onChange={(e) => setPersonalForm({ ...personalForm, address: e.target.value })}
-                            className="bg-slate-900 border-slate-700 text-white text-xs"
+                            className="bg-card border-border text-card-foreground text-xs"
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Ciudad</label>
+                          <label className="text-[10px] text-muted-foreground font-bold">Ciudad</label>
                           <Input
                             value={personalForm.city}
                             onChange={(e) => setPersonalForm({ ...personalForm, city: e.target.value })}
-                            className="bg-slate-900 border-slate-700 text-white text-xs"
+                            className="bg-card border-border text-card-foreground text-xs"
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Contacto de Emergencia (Nombre)</label>
+                          <label className="text-[10px] text-muted-foreground font-bold">Contacto de Emergencia (Nombre)</label>
                           <Input
                             value={personalForm.emergency_contact_name}
                             onChange={(e) => setPersonalForm({ ...personalForm, emergency_contact_name: e.target.value })}
-                            className="bg-slate-900 border-slate-700 text-white text-xs"
+                            className="bg-card border-border text-card-foreground text-xs"
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Teléfono de Emergencia</label>
+                          <label className="text-[10px] text-muted-foreground font-bold">Teléfono de Emergencia</label>
                           <Input
                             value={personalForm.emergency_contact_phone}
                             onChange={(e) => setPersonalForm({ ...personalForm, emergency_contact_phone: e.target.value })}
-                            className="bg-slate-900 border-slate-700 text-white text-xs"
+                            className="bg-card border-border text-card-foreground text-xs"
                           />
                         </div>
 
-                        <Button onClick={handleSavePersonalInfo} disabled={savingPersonal} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs gap-1.5 py-4">
+                        <Button onClick={handleSavePersonalInfo} disabled={savingPersonal} className="w-full bg-cyan-600 hover:bg-cyan-700 text-card-foreground font-bold text-xs gap-1.5 py-4">
                           <Save className="h-4 w-4" /> Guardar Cambios (con Auditoría GPS)
                         </Button>
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div><span className="text-slate-500">Celular Móvil:</span> <p className="font-bold text-white">{employeeProfile?.mobile || personalForm.mobile || "—"}</p></div>
-                        <div><span className="text-slate-500">Ciudad:</span> <p className="font-bold text-white">{employeeProfile?.city || personalForm.city || "—"}</p></div>
-                        <div className="col-span-2"><span className="text-slate-500">Dirección Residencial:</span> <p className="font-bold text-white">{employeeProfile?.address || personalForm.address || "—"}</p></div>
-                        <div className="col-span-2"><span className="text-slate-500">Contacto Emergencia:</span> <p className="font-bold text-white">{employeeProfile?.emergency_contact_name || "—"} ({employeeProfile?.emergency_contact_phone || "—"})</p></div>
+                        <div><span className="text-muted-foreground">Celular Móvil:</span> <p className="font-bold text-card-foreground">{employeeProfile?.mobile || personalForm.mobile || "—"}</p></div>
+                        <div><span className="text-muted-foreground">Ciudad:</span> <p className="font-bold text-card-foreground">{employeeProfile?.city || personalForm.city || "—"}</p></div>
+                        <div className="col-span-2"><span className="text-muted-foreground">Dirección Residencial:</span> <p className="font-bold text-card-foreground">{employeeProfile?.address || personalForm.address || "—"}</p></div>
+                        <div className="col-span-2"><span className="text-muted-foreground">Contacto Emergencia:</span> <p className="font-bold text-card-foreground">{employeeProfile?.emergency_contact_name || "—"} ({employeeProfile?.emergency_contact_phone || "—"})</p></div>
                       </div>
                     )}
                   </div>
 
                   {/* BLOQUEO DE FOTO BIOMÉTRICA */}
                   {hasPhoto ? (
-                    <div className="p-4 bg-slate-950/80 border border-emerald-500/40 rounded-2xl text-center space-y-1.5">
+                    <div className="p-4 bg-background/80 border border-emerald-500/50 rounded-2xl text-center space-y-1.5">
                       <div className="flex items-center justify-center gap-1.5 text-emerald-400 font-bold text-xs">
                         <ShieldCheck className="h-4 w-4" />
                         <span>Foto Biométrica Registrada & Protegida</span>
                       </div>
-                      <p className="text-[10px] text-slate-400 leading-relaxed">
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
                         Su foto de referencia está activa y guardada. Por seguridad del sistema, no se permite modificar la foto desde la App Móvil. Para cualquier actualización, solicítelo a su supervisor en el ERP Web.
                       </p>
                     </div>
                   ) : (
                     <Button
                       onClick={() => openCameraModal("reference")}
-                      className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-black text-xs gap-2 py-4 shadow-lg animate-pulse"
+                      className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-card-foreground font-black text-xs gap-2 py-4 shadow-lg animate-pulse"
                     >
                       <Camera className="h-4 w-4" /> Registrar Foto Facial de Referencia (Obligatorio)
                     </Button>
@@ -1327,7 +1499,7 @@ export default function MobileShiftView() {
 
       {/* MODAL DE REGISTRO DE NOVEDAD / INCIDENCIA */}
       <Dialog open={novedadModalOpen} onOpenChange={setNovedadModalOpen}>
-        <DialogContent className="max-w-md bg-slate-900 text-white border-slate-800">
+        <DialogContent className="max-w-md bg-card text-card-foreground border-border">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2 text-amber-400">
               <AlertTriangle className="h-5 w-5" /> Registrar Novedad de Visita
@@ -1335,11 +1507,11 @@ export default function MobileShiftView() {
           </DialogHeader>
           <div className="space-y-3 py-2 text-xs">
             <div>
-              <label className="text-[10px] text-slate-400 font-bold">Tipo de Novedad / Incidencia</label>
+              <label className="text-[10px] text-muted-foreground font-bold">Tipo de Novedad / Incidencia</label>
               <select
                 value={incidentType}
                 onChange={(e) => setIncidentType(e.target.value)}
-                className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs font-bold mt-1"
+                className="w-full p-2.5 bg-background border border-border rounded-xl text-card-foreground text-xs font-bold mt-1"
               >
                 <option value="cliente_ausente">Cliente / Sede Ausente</option>
                 <option value="acceso_denegado">Acceso Denegado en Portería</option>
@@ -1349,18 +1521,18 @@ export default function MobileShiftView() {
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-slate-400 font-bold">Detalle de la Observación</label>
+              <label className="text-[10px] text-muted-foreground font-bold">Detalle de la Observación</label>
               <textarea
                 rows={3}
                 value={observations}
                 onChange={(e) => setObservations(e.target.value)}
                 placeholder="Describa brevemente lo sucedido..."
-                className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs mt-1"
+                className="w-full p-2.5 bg-background border border-border rounded-xl text-card-foreground text-xs mt-1"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={handleSaveNovedad} disabled={savingNovedad} className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs gap-1 py-3">
+            <Button onClick={handleSaveNovedad} disabled={savingNovedad} className="w-full bg-amber-600 hover:bg-amber-700 text-card-foreground font-bold text-xs gap-1 py-3">
               <Send className="h-4 w-4" /> Guardar Novedad
             </Button>
           </DialogFooter>
@@ -1369,9 +1541,9 @@ export default function MobileShiftView() {
 
       {/* WEBCAM CAMERA MODAL WITH CANVAS CAPTURE & FALLBACK */}
       <Dialog open={cameraModalOpen} onOpenChange={(open) => { if (!open) stopCamera(); setCameraModalOpen(open); }}>
-        <DialogContent className="max-w-md bg-slate-900 text-white border-slate-800">
+        <DialogContent className="max-w-md bg-card text-card-foreground border-border">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold flex items-center gap-2 text-cyan-400">
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-primary">
               <Camera className="h-5 w-5" />
               {cameraPurpose === "reference" ? "Capturar Foto de Referencia Oficial" : cameraPurpose === "start" ? "Ingreso a Visita de Paciente" : "Finalización de Visita de Paciente"}
             </DialogTitle>
@@ -1383,14 +1555,14 @@ export default function MobileShiftView() {
             if (!currentTargetShift || (cameraPurpose !== "start" && cameraPurpose !== "end")) return null;
 
             return (
-              <div className="p-3 bg-slate-950 rounded-xl border border-cyan-500/30 space-y-2 text-xs">
+              <div className="p-3 bg-background rounded-xl border border-cyan-500/30 space-y-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-cyan-300">Paciente Acompañado:</span>
-                  <span className="font-mono text-[10px] text-slate-400">{currentTargetShift.code || "VIS"}</span>
+                  <span className="font-bold text-primary">Paciente Acompañado:</span>
+                  <span className="font-mono text-[10px] text-muted-foreground">{currentTargetShift.code || "VIS"}</span>
                 </div>
-                <p className="font-black text-white text-sm">{currentTargetShift.patient_name || currentTargetShift.client_name || currentTargetShift.name}</p>
-                <p className="text-[11px] text-slate-300 flex items-center gap-1">
-                  <MapPin className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                <p className="font-black text-card-foreground text-sm">{currentTargetShift.patient_name || currentTargetShift.client_name || currentTargetShift.name}</p>
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
                   <span>{currentTargetShift.client_address || currentTargetShift.address || "Dirección de Paciente"}</span>
                 </p>
 
@@ -1398,7 +1570,7 @@ export default function MobileShiftView() {
                 {(() => {
                   if (!coords) {
                     return (
-                      <div className="p-2 bg-slate-900 rounded-lg text-[10px] text-amber-300 flex items-center gap-1.5 font-bold">
+                      <div className="p-2 bg-card rounded-lg text-[10px] text-amber-300 flex items-center gap-1.5 font-bold">
                         <RefreshCw className="h-3 w-3 animate-spin text-amber-400" />
                         <span>Obteniendo coordenadas GPS en tiempo real...</span>
                       </div>
@@ -1409,7 +1581,7 @@ export default function MobileShiftView() {
                     const isNear = dist <= 300;
                     return (
                       <div className={`p-2 rounded-lg text-[10px] font-bold flex items-center gap-1.5 ${
-                        isNear ? "bg-emerald-950/80 border border-emerald-500/40 text-emerald-300" : "bg-amber-950/80 border border-amber-500/40 text-amber-300"
+                        isNear ? "bg-emerald-950/80 border border-emerald-500/50 text-emerald-300" : "bg-amber-950/80 border border-amber-500/40 text-amber-300"
                       }`}>
                         <MapPin className={`h-3.5 w-3.5 ${isNear ? "text-emerald-400" : "text-amber-400"}`} />
                         <span>
@@ -1421,8 +1593,8 @@ export default function MobileShiftView() {
                     );
                   }
                   return (
-                    <div className="p-2 bg-slate-900 rounded-lg text-[10px] text-cyan-300 font-mono flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 text-cyan-400" />
+                    <div className="p-2 bg-card rounded-lg text-[10px] text-primary font-mono flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-primary" />
                       <span>GPS Capturado: Lat {coords.lat.toFixed(4)}, Lng {coords.lng.toFixed(4)}</span>
                     </div>
                   );
@@ -1433,12 +1605,12 @@ export default function MobileShiftView() {
 
           <div className="space-y-4 py-2 text-xs">
             {/* Live WebCam Stream / Canvas Display */}
-            <div className="relative aspect-video bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center">
+            <div className="relative aspect-video bg-background rounded-2xl overflow-hidden border border-border flex items-center justify-center">
               {!capturedPhotoBase64 ? (
                 <>
                   <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
                   <div className="absolute inset-0 border-2 border-dashed border-cyan-500/50 rounded-2xl pointer-events-none flex items-center justify-center">
-                    <p className="text-[10px] text-cyan-300 font-mono bg-slate-950/80 px-2 py-1 rounded">Alinee su rostro al centro</p>
+                    <p className="text-[10px] text-primary font-mono bg-background/80 px-2 py-1 rounded">Alinee su rostro al centro</p>
                   </div>
                 </>
               ) : (
@@ -1448,9 +1620,9 @@ export default function MobileShiftView() {
             </div>
 
             {/* Fallback File Capture */}
-            <div className="flex items-center justify-between text-[11px] border-t border-slate-800 pt-2">
-              <span className="text-slate-400">¿Problemas con la cámara?</span>
-              <label className="text-cyan-400 hover:underline cursor-pointer font-bold flex items-center gap-1">
+            <div className="flex items-center justify-between text-[11px] border-t border-border pt-2">
+              <span className="text-muted-foreground">¿Problemas con la cámara?</span>
+              <label className="text-primary hover:underline cursor-pointer font-bold flex items-center gap-1">
                 <Upload className="h-3.5 w-3.5" /> Subir Fotografía
                 <input type="file" accept="image/*" capture="user" onChange={handleFileCapture} className="hidden" />
               </label>
@@ -1464,7 +1636,7 @@ export default function MobileShiftView() {
               </Button>
             ) : (
               <>
-                <Button onClick={() => { setCapturedPhotoBase64(null); startCamera(); }} variant="outline" className="w-full sm:w-1/2 text-xs text-slate-200 border-slate-700">
+                <Button onClick={() => { setCapturedPhotoBase64(null); startCamera(); }} variant="outline" className="w-full sm:w-1/2 text-xs text-foreground border-border">
                   Repetir Foto
                 </Button>
                 <Button
@@ -1473,7 +1645,7 @@ export default function MobileShiftView() {
                     cameraPurpose === "start" ? handleConfirmStartVisit : handleConfirmEndVisit
                   }
                   disabled={punching}
-                  className="w-full sm:w-1/2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-1 py-3"
+                  className="w-full sm:w-1/2 bg-emerald-600 hover:bg-emerald-700 text-card-foreground font-bold text-xs gap-1 py-3"
                 >
                   <CheckCircle2 className="h-4 w-4" /> Confirmar & Guardar
                 </Button>

@@ -210,6 +210,23 @@ async def seed():
     now = datetime.now(timezone.utc)
 
     async with Session() as db:
+        # ── EARLY EXIT GUARD ────────────────────────────────────────────
+        # If the admin employee and roles/perms already exist, skip seed entirely.
+        # This prevents 100+ SQL queries on every backend startup (major perf fix).
+        admin_check = await db.execute(
+            text("SELECT id FROM employees WHERE email = 'admin@dlaredes.com.co' LIMIT 1")
+        )
+        roles_check = await db.execute(text("SELECT COUNT(*) FROM roles"))
+        roles_count = roles_check.scalar() or 0
+        perms_check = await db.execute(text("SELECT COUNT(*) FROM permissions"))
+        perms_count = perms_check.scalar() or 0
+
+        if admin_check.fetchone() and roles_count >= 5 and perms_count >= 50:
+            print("Seed: Sistema ya inicializado, omitiendo seed.")
+            await engine.dispose()
+            return
+        # ────────────────────────────────────────────────────────────────
+
         company_id = str(uuid.uuid4())
 
         # 1. Company
@@ -357,18 +374,21 @@ async def seed():
                 "first_name": "Luz", "last_name": "Gaviria", "email": "lulugaviria@hotmail.com",
                 "username": "lulugaviria", "mobile": "3001234567", "address": "Calle 10 # 43A-25, Poblado, Medellín",
                 "eps": "EPS Sura", "arl": "Positiva ARL", "afp": "Porvenir",
+                "platform_access": "mobile",  # Solo puede entrar a la PWA Campo
             },
             {
                 "code": "EMP-1002", "document_type": "CC", "document_number": "1030405060",
                 "first_name": "Carlos Alberto", "last_name": "Mendoza", "email": "carlos.mendoza@dlaredes.com.co",
                 "username": "carlos.mendoza", "mobile": "3109876543", "address": "Carrera 43A # 14-20, Envigado",
                 "eps": "Sanitas EPS", "arl": "ARL Sura", "afp": "Protección",
+                "platform_access": "both",
             },
             {
                 "code": "EMP-1003", "document_type": "CC", "document_number": "1040506070",
                 "first_name": "María Elena", "last_name": "Ruiz", "email": "maria.ruiz@dlaredes.com.co",
                 "username": "maria.ruiz", "mobile": "3154567890", "address": "Calle 50 # 65-10, Laureles, Medellín",
                 "eps": "Compensar EPS", "arl": "AXA Colpatria ARL", "afp": "Colfondos",
+                "platform_access": "both",
             },
         ]
 
@@ -377,6 +397,7 @@ async def seed():
             e_res = await db.execute(text("SELECT id FROM employees WHERE document_number = :doc"), {"doc": emp_def["document_number"]})
             e_row = e_res.fetchone()
             emp_pwd = hash_password(emp_def["document_number"])
+            platform = emp_def.get("platform_access", "both")
             if not e_row:
                 emp_id = str(uuid.uuid4())
                 emp = Employee(
@@ -384,16 +405,16 @@ async def seed():
                     document_number=emp_def["document_number"], first_name=emp_def["first_name"], last_name=emp_def["last_name"],
                     email=emp_def["email"], username=emp_def["username"], hashed_password=emp_pwd, mobile=emp_def["mobile"],
                     address=emp_def["address"], eps=emp_def["eps"], arl=emp_def["arl"], afp=emp_def["afp"],
-                    platform_access="both", account_status="active", status="active", is_superuser=False,
+                    platform_access=platform, account_status="active", status="active", is_superuser=False,
                 )
                 db.add(emp)
                 created_emp_ids.append(emp_id)
             else:
                 await db.execute(text("""
                     UPDATE employees 
-                    SET email = :email, username = :username, hashed_password = :pwd 
+                    SET email = :email, username = :username, hashed_password = :pwd, platform_access = :platform
                     WHERE document_number = :doc
-                """), {"email": emp_def["email"], "username": emp_def["username"], "pwd": emp_pwd, "doc": emp_def["document_number"]})
+                """), {"email": emp_def["email"], "username": emp_def["username"], "pwd": emp_pwd, "platform": platform, "doc": emp_def["document_number"]})
                 created_emp_ids.append(e_row[0])
 
         await db.commit()

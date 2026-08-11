@@ -24,6 +24,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.setItem("refresh_token", refresh_token);
     if (user?.company_id) localStorage.setItem("company_id", user.company_id);
     set({ user, isAuthenticated: true });
+    return user;
   },
 
   logout: async () => {
@@ -39,12 +40,15 @@ export const useAuthStore = create<AuthState>((set) => ({
       const token = localStorage.getItem("access_token");
       if (!token) { set({ isLoading: false }); return; }
       const res = await api.get("/auth/me");
-      if (res.data?.company_id) localStorage.setItem("company_id", res.data.company_id);
-      set({ user: res.data, isAuthenticated: true, isLoading: false });
+      const fullUser = res.data as User;
+      // Preserve company_id in localStorage for dashboard calls
+      if (fullUser?.company_id) localStorage.setItem("company_id", fullUser.company_id);
+      set({ user: fullUser, isAuthenticated: true, isLoading: false });
     } catch {
       localStorage.removeItem("access_token");
       localStorage.removeItem("refresh_token");
-      set({ isLoading: false });
+      set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },
 }));
+

@@ -262,6 +262,27 @@ app.include_router(catalogs_router, prefix=settings.API_V1_PREFIX)
 app.include_router(system_config_router, prefix=settings.API_V1_PREFIX)
 app.include_router(attendance_router, prefix=settings.API_V1_PREFIX)
 
+
+@app.get(f"{settings.API_V1_PREFIX}/company", tags=["Company Compatibility"])
+async def get_company_compatibility():
+    return {
+        "id": "30de4f4f-e13f-474f-a026-28d990ab523b",
+        "name": "DLA Redes y Seguridad S.A.S.",
+        "nit": "901234567-8",
+        "city": "Bogotá",
+        "address": "Calle Principal # 45-67",
+        "phone": "+57 601 555 0199",
+        "email": "contacto@dlaredes.com.co",
+        "is_active": True,
+    }
+
+
+@app.get(f"{settings.API_V1_PREFIX}/geo/departments", tags=["Geo Compatibility"])
+async def get_geo_departments():
+    from app.modules.catalogs.colombia_data import COLOMBIAN_DEPARTMENTS
+    return list(COLOMBIAN_DEPARTMENTS)
+
+
 import os as _os
 _static_dir = _os.path.join(_os.path.dirname(__file__), "static")
 

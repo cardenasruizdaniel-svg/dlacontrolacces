@@ -55,6 +55,11 @@ class EmployeeService:
                     kwargs[field] = _date.fromisoformat(kwargs[field])
                 except (ValueError, TypeError):
                     kwargs[field] = None
+        
+        # If the photo is deleted/cleared, we must also reset the facial encoding to force re-registration
+        if "photo_url" in kwargs and not kwargs["photo_url"]:
+            kwargs["facial_encoding"] = None
+
         updated = await self.employee_repo.update(employee_id, **kwargs)
         return {"id": updated.id, "message": "Employee updated successfully"}
 

@@ -23,7 +23,10 @@ async def _get_employee(db: DbSession, current_user: CurrentUser) -> Employee | 
     emp_id = getattr(current_user, "employee_id", None)
     if emp_id:
         result = await db.execute(
-            select(Employee).where(
+            select(Employee).options(
+                selectinload(Employee.company),
+                selectinload(Employee.job_position)
+            ).where(
                 Employee.id == emp_id,
                 Employee.is_deleted == False,
             )
@@ -36,7 +39,10 @@ async def _get_employee(db: DbSession, current_user: CurrentUser) -> Employee | 
     email = getattr(current_user, "email", None)
     if email:
         result = await db.execute(
-            select(Employee).where(
+            select(Employee).options(
+                selectinload(Employee.company),
+                selectinload(Employee.job_position)
+            ).where(
                 func.lower(Employee.email) == email.lower(),
                 Employee.is_deleted == False,
             )
@@ -49,7 +55,10 @@ async def _get_employee(db: DbSession, current_user: CurrentUser) -> Employee | 
     user_id = getattr(current_user, "id", None)
     if user_id:
         result = await db.execute(
-            select(Employee).where(
+            select(Employee).options(
+                selectinload(Employee.company),
+                selectinload(Employee.job_position)
+            ).where(
                 (Employee.id == user_id) | (Employee.user_id == user_id),
                 Employee.is_deleted == False,
             )
@@ -58,12 +67,18 @@ async def _get_employee(db: DbSession, current_user: CurrentUser) -> Employee | 
         if emp:
             return emp
 
-    # 4. Match by document_number or code if username is passed
+    # 4. Match by document_number, code, or email prefix if username is passed
     username = getattr(current_user, "username", None) or getattr(current_user, "code", None)
     if username:
+        # Try to match email prefix (e.g., 'lulugaviria' matches 'lulugaviria@hotmail.com')
         result = await db.execute(
-            select(Employee).where(
-                (Employee.document_number == username) | (Employee.code == username),
+            select(Employee).options(
+                selectinload(Employee.company),
+                selectinload(Employee.job_position)
+            ).where(
+                (Employee.document_number == username) | 
+                (Employee.code == username) |
+                (Employee.email.like(f"{username}@%")),
                 Employee.is_deleted == False,
             )
         )
@@ -74,11 +89,21 @@ async def _get_employee(db: DbSession, current_user: CurrentUser) -> Employee | 
     return None
 
 
+from app.shared.database.models_hr import Contract
+
 @router.get("/me/employee")
 async def get_my_employee(current_user: CurrentUser, db: DbSession):
     emp = await _get_employee(db, current_user)
     if not emp:
         return {"error": "No employee record found"}
+        
+    contract_stmt = select(Contract).where(
+        Contract.employee_id == emp.id,
+        Contract.status == "active",
+        Contract.is_deleted == False
+    ).order_by(Contract.created_at.desc())
+    active_contract = (await db.execute(contract_stmt)).scalar_one_or_none()
+
     return {
         "id": emp.id, "code": emp.code, "first_name": emp.first_name,
         "last_name": emp.last_name, "email": emp.email, "phone": emp.phone,
@@ -91,7 +116,10 @@ async def get_my_employee(current_user: CurrentUser, db: DbSession):
         "company_id": emp.company_id, "department_id": emp.department_id,
         "job_position_id": emp.job_position_id,
         "job_position": emp.job_position.name if getattr(emp, "job_position", None) else "Operador de Campo",
-        "company_name": emp.company.name if getattr(emp, "company", None) else "DLA Redes y Seguridad",
+        "company_name": emp.company.name if getattr(emp, "company", None) else "",
+        "company_nit": emp.company.nit if getattr(emp, "company", None) else "",
+        "company_address": emp.company.address if getattr(emp, "company", None) else "",
+        "company_city": emp.company.city if getattr(emp, "company", None) else "",
         "hire_date": str(emp.hire_date) if emp.hire_date else None,
         "eps": emp.eps or "EPS Sura",
         "arl": emp.arl or "Positiva ARL",
@@ -101,6 +129,10 @@ async def get_my_employee(current_user: CurrentUser, db: DbSession):
         "emergency_contact_phone": emp.emergency_contact_phone,
         "emergency_contact_relation": emp.emergency_contact_relation,
         "can_assign_georeference": emp.can_assign_georeference,
+        "salary": active_contract.salary if active_contract else None,
+        "salary_type": active_contract.salary_type if active_contract else None,
+        "hourly_rate": active_contract.hourly_rate if active_contract else None,
+        "shift_value": active_contract.shift_value if active_contract else None,
     }
 
 
@@ -118,18 +150,34 @@ async def register_reference_photo(
     current_user: CurrentUser,
     db: DbSession,
 ):
+    import logging
+    logger = logging.getLogger(__name__)
+    
     emp = await _get_employee(db, current_user)
     if not emp:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
 
-    if emp.photo_url and emp.photo_url.strip():
+    logger.info(f"register_reference_photo: emp={emp.id}, photo_url_len={len(emp.photo_url) if emp.photo_url else 0}, facial_encoding={bool(emp.facial_encoding)}, base64_len={len(body.photo_base64)}")
+
+    # Only block if both photo AND face encoding already exist (successful prior registration)
+    if emp.photo_url and emp.photo_url.strip() and emp.facial_encoding:
         raise HTTPException(
             status_code=400,
             detail="La foto de referencia biométrica ya fue registrada previamente y está protegida por seguridad. Para cualquier actualización o reemplazo de la foto, debe realizarse por un Administrador en el ERP Web."
         )
 
+    from app.modules.facial_recognition.application.service import FacialRecognitionService
+    from app.modules.facial_recognition.infrastructure.repositories import FaceRepository
+    
+    face_service = FacialRecognitionService(FaceRepository(db))
+    try:
+        result = await face_service.register_face(emp.id, body.photo_base64)
+        logger.info(f"register_face result: {result}")
+    except Exception as e:
+        logger.error(f"register_face FAILED: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"No se pudo detectar el rostro válido en la foto: {str(e)}")
+
     emp.photo_url = body.photo_base64
-    emp.is_face_registered = True
     await db.commit()
     await db.refresh(emp)
     return {
@@ -148,6 +196,7 @@ class PersonalInfoUpdatePayload(BaseModel):
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
     emergency_contact_relation: str | None = None
+    signature_url: str | None = None
     latitude: float | None = None
     longitude: float | None = None
 
@@ -172,6 +221,7 @@ async def update_my_personal_info(
     if body.emergency_contact_name is not None: emp.emergency_contact_name = body.emergency_contact_name.strip()
     if body.emergency_contact_phone is not None: emp.emergency_contact_phone = body.emergency_contact_phone.strip()
     if body.emergency_contact_relation is not None: emp.emergency_contact_relation = body.emergency_contact_relation.strip()
+    if body.signature_url is not None: emp.signature_url = body.signature_url.strip()
 
     await db.commit()
     await db.refresh(emp)
@@ -360,81 +410,40 @@ def _serialize_shift(s: Shift) -> dict:
     }
 
 
+async def _get_shift_worked_hours(db: DbSession, shift: Shift, emp_id: str) -> float | None:
+    exit_q = select(AccessRecord).where(
+        AccessRecord.shift_id == shift.id,
+        AccessRecord.record_type == "exit"
+    ).order_by(AccessRecord.created_at.desc())
+    exit_rec = (await db.execute(exit_q)).scalar_one_or_none()
+    
+    if not exit_rec:
+        # Fallback for old records without shift_id
+        exit_q = select(AccessRecord).where(
+            AccessRecord.employee_id == emp_id,
+            AccessRecord.record_type == "exit",
+            AccessRecord.timestamp >= f"{shift.shift_date}T00:00:00",
+            AccessRecord.timestamp <= f"{shift.shift_date}T23:59:59"
+        ).order_by(AccessRecord.created_at.desc())
+        exit_rec = (await db.execute(exit_q)).scalar_one_or_none()
+        
+    if exit_rec and exit_rec.worked_hours is not None:
+        return round(float(exit_rec.worked_hours), 2)
+    return None
+
+
 async def _seed_demo_shifts_if_empty(db: DbSession, company_id: str, employee_id: str | None = None) -> list[Shift]:
+    from app.shared.database.models_hr import Employee
+    
     stmt = (
         select(Shift)
         .options(selectinload(Shift.persona), selectinload(Shift.client_rel))
-        .where(Shift.company_id == company_id, Shift.is_deleted == False)
+        .join(Employee, Employee.id == Shift.employee_id)
+        .where(Employee.company_id == company_id, Shift.is_deleted == False)
     )
-    existing = list((await db.execute(stmt)).scalars().all())
-    if existing:
-        return existing
-
-    from app.shared.database.models_hr import Employee
-    from app.shared.database.models_access import Persona
-
-    if not employee_id:
-        emp_res = await db.execute(select(Employee).where(Employee.company_id == company_id, Employee.is_deleted == False).limit(1))
-        emp = emp_res.scalar_one_or_none()
-        employee_id = emp.id if emp else None
-
-    if not employee_id:
-        return []
-
-    now_utc = datetime.now(timezone.utc)
-    now_cot = now_utc - timedelta(hours=5)
-    today_dt = now_cot.date()
-    tomorrow_dt = today_dt + timedelta(days=1)
-
-    persona_res = await db.execute(select(Persona).where(Persona.company_id == company_id, Persona.is_deleted == False).limit(1))
-    persona = persona_res.scalar_one_or_none()
-    persona_id = persona.id if persona else None
-
-    s1 = Shift(
-        company_id=company_id,
-        employee_id=employee_id,
-        persona_id=persona_id,
-        name="Visita Domiciliaria de Control & Terapia",
-        color="#3b82f6",
-        shift_date=today_dt,
-        start_time="08:00",
-        end_time="12:00",
-        break_minutes=30,
-        status="scheduled",
-        observations="Paciente en recuperación. Realizar toma de signos vitales y terapia física.",
-    )
-    s2 = Shift(
-        company_id=company_id,
-        employee_id=employee_id,
-        persona_id=persona_id,
-        name="Atención Médica Domiciliaria P.M.",
-        color="#10b981",
-        shift_date=today_dt,
-        start_time="13:00",
-        end_time="17:00",
-        break_minutes=60,
-        status="scheduled",
-        observations="Revisión de glucometría y administración de medicamentos.",
-    )
-    s3 = Shift(
-        company_id=company_id,
-        employee_id=employee_id,
-        persona_id=persona_id,
-        name="Seguimiento Especial Domiciliario",
-        color="#8b5cf6",
-        shift_date=tomorrow_dt,
-        start_time="09:00",
-        end_time="13:00",
-        break_minutes=30,
-        status="scheduled",
-        observations="Valoración inicial de enfermería y control de dosis.",
-    )
-
-    db.add_all([s1, s2, s3])
-    await db.commit()
-
-    res = await db.execute(stmt)
-    return list(res.scalars().all())
+    if employee_id:
+        stmt = stmt.where(Shift.employee_id == employee_id)
+    return list((await db.execute(stmt)).scalars().all())
 
 
 @router.get("/me/shifts")
@@ -443,7 +452,6 @@ async def get_my_shifts(
     start_date: str | None = Query(None), end_date: str | None = Query(None),
 ):
     emp = await _get_employee(db, current_user)
-    company_id = getattr(current_user, "company_id", None) or "dla-company-main"
     repo = ShiftRepository(db)
 
     if emp:
@@ -451,14 +459,16 @@ async def get_my_shifts(
     else:
         shifts = []
 
-    if not shifts:
-        company_shifts = await repo.list_by_company(company_id)
-        if company_shifts:
-            shifts = company_shifts
-        else:
-            shifts = await _seed_demo_shifts_if_empty(db, company_id, emp.id if emp else None)
+    res = []
+    for s in shifts:
+        s_dict = _serialize_shift(s)
+        if s.status in ["completed", "salida_anticipada"]:
+            worked_h = await _get_shift_worked_hours(db, s, emp.id)
+            if worked_h is not None:
+                s_dict["worked_hours"] = worked_h
+        res.append(s_dict)
 
-    return [_serialize_shift(s) for s in shifts]
+    return res
 
 
 @router.get("/me/access-history")
@@ -516,6 +526,10 @@ async def get_my_payroll_summary(current_user: CurrentUser, db: DbSession):
     )
     periods = list((await db.execute(periods_q)).scalars().all())
 
+    from app.shared.database.models_contract import Contract
+    contract_q = select(Contract).where(Contract.employee_id == emp.id, Contract.is_deleted == False).order_by(Contract.created_at.desc())
+    contract = (await db.execute(contract_q)).scalar_one_or_none()
+
     latest_record = None
     for p in periods:
         rec_q = select(PayrollRecord).where(
@@ -525,6 +539,67 @@ async def get_my_payroll_summary(current_user: CurrentUser, db: DbSession):
         )
         rec = (await db.execute(rec_q)).scalar_one_or_none()
         if rec:
+            from app.shared.database.models_scheduling import Shift
+            shifts_q = select(Shift).where(
+                Shift.employee_id == emp.id,
+                Shift.shift_date >= p.start_date,
+                Shift.shift_date <= p.end_date,
+                Shift.is_deleted == False
+            ).order_by(Shift.shift_date.asc(), Shift.start_time.asc())
+            
+            # Obtener tarifa horaria del contrato
+            from app.shared.database.models_contract import Contract
+            contract_q = select(Contract).where(Contract.employee_id == emp.id, Contract.is_deleted == False).order_by(Contract.created_at.desc())
+            contract = (await db.execute(contract_q)).scalar_one_or_none()
+            hourly_rate = float(contract.hourly_rate or (contract.salary if contract and str(getattr(contract, 'salary_type', '')).lower() in ['hourly', 'por hora'] else 0.0)) if contract else 0.0
+            if hourly_rate <= 0 and contract and contract.shift_value:
+                shift_hours = contract.shift_duration_hours or 8.0
+                hourly_rate = float(contract.shift_value) / shift_hours if shift_hours > 0 else 0.0
+
+            shifts_results = (await db.execute(shifts_q)).scalars().all()
+            shifts_list = []
+            
+            from datetime import datetime as dt_mod
+            for s in shifts_results:
+                exit_q = select(AccessRecord).where(
+                    AccessRecord.shift_id == s.id,
+                    AccessRecord.record_type == "exit",
+                    AccessRecord.is_deleted == False
+                ).order_by(AccessRecord.created_at.desc())
+                exit_rec = (await db.execute(exit_q)).scalar_one_or_none()
+                
+                worked_h = float(exit_rec.worked_hours or 0.0) if exit_rec else 0.0
+                scheduled_h = 0.0
+                if s.start_time and s.end_time:
+                    try:
+                        t1 = dt_mod.strptime(s.start_time, "%H:%M")
+                        t2 = dt_mod.strptime(s.end_time, "%H:%M")
+                        scheduled_h = (t2 - t1).total_seconds() / 3600.0
+                        if scheduled_h < 0:
+                            scheduled_h += 24
+                    except Exception:
+                        pass
+                
+                if worked_h == 0.0 and s.status.lower() == "completed":
+                    worked_h = scheduled_h
+                    
+                if worked_h > scheduled_h > 0:
+                    worked_h = scheduled_h
+                
+                earned = worked_h * hourly_rate
+
+                shifts_list.append({
+                    "id": s.id,
+                    "date": str(s.shift_date),
+                    "start_time": s.start_time,
+                    "end_time": s.end_time,
+                    "name": s.name,
+                    "status": s.status,
+                    "color": s.color,
+                    "worked_hours": round(worked_h, 2),
+                    "earned_value": round(earned, 2)
+                })
+
             latest_record = {
                 "id": rec.id, "period_id": rec.period_id,
                 "base_salary": float(rec.base_salary or 0),
@@ -544,8 +619,100 @@ async def get_my_payroll_summary(current_user: CurrentUser, db: DbSession):
                 "total_employer_cost": float(rec.total_employer_cost or 0),
                 "worked_days": rec.worked_days or 0,
                 "status": rec.status,
+                "shifts": shifts_list,
+                "payment_method": getattr(contract, "payment_method", None) if contract else None,
+                "bank_name": getattr(contract, "bank_name", None) if contract else None,
+                "bank_account_number": getattr(contract, "bank_account_number", None) if contract else None,
+                "signature_url": getattr(emp, "signature_url", None) or (getattr(contract, "signature_url", None) if contract else None),
             }
-            break
+    if not latest_record:
+        # Fallback to current month shifts if no official payroll record exists yet
+        from app.shared.database.models_scheduling import Shift
+        import calendar
+        now = datetime.now()
+        start_date = date(now.year, now.month, 1)
+        end_date = date(now.year, now.month, calendar.monthrange(now.year, now.month)[1])
+        
+        shifts_q = select(Shift).where(
+            Shift.employee_id == emp.id,
+            Shift.shift_date >= start_date,
+            Shift.shift_date <= end_date,
+            Shift.is_deleted == False
+        ).order_by(Shift.shift_date.asc(), Shift.start_time.asc())
+        
+        shifts_results = (await db.execute(shifts_q)).scalars().all()
+        
+        hourly_rate = float(contract.hourly_rate or (contract.salary if contract and str(getattr(contract, 'salary_type', '')).lower() in ['hourly', 'por hora'] else 0.0)) if contract else 0.0
+        if hourly_rate <= 0 and contract and contract.shift_value:
+            shift_hours = contract.shift_duration_hours or 8.0
+            hourly_rate = float(contract.shift_value) / shift_hours if shift_hours > 0 else 0.0
+
+        shifts_list = []
+        total_earnings = 0.0
+
+        from datetime import datetime as dt_mod
+        for s in shifts_results:
+            worked_h = await _get_shift_worked_hours(db, s, emp.id)
+            worked_h = worked_h if worked_h is not None else 0.0
+            
+            scheduled_h = 0.0
+            if s.start_time and s.end_time:
+                try:
+                    t1 = dt_mod.strptime(s.start_time, "%H:%M")
+                    t2 = dt_mod.strptime(s.end_time, "%H:%M")
+                    scheduled_h = (t2 - t1).total_seconds() / 3600.0
+                    if scheduled_h < 0:
+                        scheduled_h += 24
+                except Exception:
+                    pass
+            
+            if worked_h == 0.0 and s.status.lower() == "completed":
+                worked_h = scheduled_h
+                
+            if worked_h > scheduled_h > 0:
+                worked_h = scheduled_h
+            
+            earned = worked_h * hourly_rate
+            total_earnings += earned
+
+            shifts_list.append({
+                "id": s.id,
+                "date": str(s.shift_date),
+                "start_time": s.start_time,
+                "end_time": s.end_time,
+                "name": s.name,
+                "status": s.status,
+                "color": s.color,
+                "worked_hours": round(worked_h, 2),
+                "earned_value": round(earned, 2)
+            })
+            
+        latest_record = {
+            "id": "draft",
+            "period_id": f"draft-{now.year}-{now.month}",
+            "base_salary": round(total_earnings, 2),
+            "transportation_assistance": 0.0,
+            "overtime_hours": 0.0,
+            "overtime_value": 0.0,
+            "night_hours": 0.0,
+            "night_value": 0.0,
+            "bonuses": 0.0,
+            "commissions": 0.0,
+            "health_deduction": 0.0,
+            "pension_deduction": 0.0,
+            "retefuente": 0.0,
+            "total_earnings": round(total_earnings, 2),
+            "total_deductions": 0.0,
+            "net_pay": round(total_earnings, 2),
+            "total_employer_cost": 0.0,
+            "worked_days": len(set(s["date"] for s in shifts_list if s["worked_hours"] > 0)),
+            "status": "draft",
+            "shifts": shifts_list,
+            "payment_method": getattr(contract, "payment_method", None) if contract else None,
+            "bank_name": getattr(contract, "bank_name", None) if contract else None,
+            "bank_account_number": getattr(contract, "bank_account_number", None) if contract else None,
+            "signature_url": getattr(emp, "signature_url", None) or (getattr(contract, "signature_url", None) if contract else None),
+        }
 
     return {
         "periods": [
@@ -645,10 +812,18 @@ async def get_active_session(current_user: CurrentUser, db: DbSession):
                 pass
     await db.commit()
 
-    all_shifts_serialized = [_serialize_shift(s) for s in all_shifts]
-    today_shifts_serialized = [_serialize_shift(s) for s in today_shifts]
+    all_shifts_serialized = []
+    for s in all_shifts:
+        s_dict = _serialize_shift(s)
+        if s.status in ["completed", "salida_anticipada"]:
+            worked_h = await _get_shift_worked_hours(db, s, emp.id)
+            if worked_h is not None:
+                s_dict["worked_hours"] = worked_h
+        all_shifts_serialized.append(s_dict)
+        
+    today_shifts_serialized = [s for s in all_shifts_serialized if s["id"] in [ts.id for ts in today_shifts]]
 
-    in_progress_shift = next((s for s in today_shifts if s.status == "in_progress"), None)
+    in_progress_shift = next((s for s in all_shifts if s.status == "in_progress"), None)
     if not in_progress_shift:
         next_shift = None
         for s in today_shifts:
@@ -831,6 +1006,22 @@ async def start_visit(body: StartVisitRequest, current_user: CurrentUser, db: Db
             rec.is_late_arrival = True
             await db.flush()
 
+    if result.get("inside_geofence") is False:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Ubicación GPS fuera del margen permitido. Debe acercarse más a la sede del paciente.")
+
+    if not body.photo_base64:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="La validación biométrica es obligatoria. Debe tomarse una foto.")
+
+    if result.get("face_verified") is False:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="La validación biométrica facial ha fallado. Su rostro no coincide con la foto registrada.")
+
+    # Status update logic
+    shift.status = "in_progress"
+    await db.commit()
+
     return {**result, "is_late_arrival": is_late}
 
 
@@ -851,7 +1042,9 @@ async def end_visit(body: EndVisitRequest, current_user: CurrentUser, db: DbSess
     if not emp:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
 
-    shift_q = select(Shift).where(Shift.id == body.shift_id, Shift.is_deleted == False)
+    shift_q = select(Shift).options(
+        selectinload(Shift.client_rel)
+    ).where(Shift.id == body.shift_id, Shift.is_deleted == False)
     shift = (await db.execute(shift_q)).scalar_one_or_none()
     if not shift:
         raise HTTPException(status_code=404, detail="Turno no encontrado")
@@ -878,6 +1071,24 @@ async def end_visit(body: EndVisitRequest, current_user: CurrentUser, db: DbSess
     from app.modules.access_control.infrastructure.repositories import AccessRecordRepository
 
     svc = AccessControlService(record_repo=AccessRecordRepository(db), db=db)
+    
+    # Restrictive validation for exit
+    if shift.client_rel and shift.client_rel.latitude is not None:
+        geo_res = svc.geo_service.check_geofence(
+            body.latitude, body.longitude, 
+            shift.client_rel.latitude, shift.client_rel.longitude, 
+            shift.client_rel.geofence_radius or 100
+        )
+        if not geo_res["inside"]:
+            raise HTTPException(status_code=400, detail="Ubicación GPS fuera del margen permitido para finalizar la visita.")
+
+    if not body.photo_base64:
+        raise HTTPException(status_code=400, detail="La validación biométrica es obligatoria al finalizar la visita. Debe tomarse una foto.")
+
+    face_res = await svc.face_service.verify_face(emp.id, body.photo_base64)
+    if not face_res.get("verified"):
+        raise HTTPException(status_code=400, detail="La validación biométrica facial ha fallado al finalizar visita.")
+
     result = await svc.register_exit(
         employee_id=emp.id,
         latitude=body.latitude,
@@ -887,8 +1098,7 @@ async def end_visit(body: EndVisitRequest, current_user: CurrentUser, db: DbSess
         device_id=body.device_id,
         connection_type=body.connection_type,
         offline_timestamp=body.offline_timestamp,
-        shift_id=body.shift_id,
-        client_id=shift.client_id,
+        shift_id=shift.id,
     )
 
     if is_early:
@@ -899,6 +1109,11 @@ async def end_visit(body: EndVisitRequest, current_user: CurrentUser, db: DbSess
         if rec:
             rec.is_early_departure = True
             await db.flush()
+        shift.status = "salida_anticipada"
+    else:
+        shift.status = "completed"
+
+    await db.commit()
 
     return {**result, "is_early_departure": is_early}
 

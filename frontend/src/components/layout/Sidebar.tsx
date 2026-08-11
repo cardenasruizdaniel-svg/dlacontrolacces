@@ -14,20 +14,20 @@ import {
 import { useSystemConfig } from "@/lib/useSystemConfig";
 
 const navItems = [
-  { label: "Panel de Control", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Gestión de Empleados", href: "/employees", icon: Users },
-  { label: "Contratos Laborales", href: "/contracts", icon: FileText },
-  { label: "Nómina y Liquidación", href: "/payroll", icon: DollarSign },
-  { label: "Clientes y Sedes", href: "/clients", icon: Building2 },
-  { label: "Programación de Turnos", href: "/scheduling", icon: Calendar },
-  { label: "Geolocalización GPS", href: "/geolocation", icon: MapPin },
-  { label: "Control de Acceso", href: "/access-control", icon: Shield },
-  { label: "Matriz de Roles e IAM", href: "/iam/roles", icon: ShieldCheck },
-  { label: "Reconocimiento Facial", href: "/facial-recognition", icon: Camera },
-  { label: "Reportes y Auditoría", href: "/reports", icon: BarChart3 },
-  { label: "Asistente IA", href: "/ai-assistant", icon: Bot },
-  { label: "Manual de Funcionamiento", href: "/help", icon: BookOpen },
-  { label: "Configuración", href: "/settings", icon: Settings },
+  { label: "Panel de Control", href: "/dashboard", icon: LayoutDashboard, adminOnly: false },
+  { label: "Gestión de Empleados", href: "/employees", icon: Users, adminOnly: true },
+  { label: "Contratos Laborales", href: "/contracts", icon: FileText, adminOnly: true },
+  { label: "Nómina y Liquidación", href: "/payroll", icon: DollarSign, adminOnly: true },
+  { label: "Clientes y Sedes", href: "/clients", icon: Building2, adminOnly: true },
+  { label: "Programación de Turnos", href: "/scheduling", icon: Calendar, adminOnly: true },
+  { label: "Geolocalización GPS", href: "/geolocation", icon: MapPin, adminOnly: false },
+  { label: "Control de Acceso", href: "/access-control", icon: Shield, adminOnly: false },
+  { label: "Matriz de Roles e IAM", href: "/iam/roles", icon: ShieldCheck, adminOnly: true },
+  { label: "Reconocimiento Facial", href: "/facial-recognition", icon: Camera, adminOnly: true },
+  { label: "Reportes y Auditoría", href: "/reports", icon: BarChart3, adminOnly: true },
+  { label: "Asistente IA", href: "/ai-assistant", icon: Bot, adminOnly: false },
+  { label: "Manual de Funcionamiento", href: "/help", icon: BookOpen, adminOnly: false },
+  { label: "Configuración", href: "/settings", icon: Settings, adminOnly: true },
 ];
 
 export default function Sidebar() {
@@ -35,17 +35,37 @@ export default function Sidebar() {
   const { sidebarOpen } = useUIStore();
   const { user } = useAuthStore();
   const { configs } = useSystemConfig();
-  const isAdmin = user?.is_superuser || user?.role_id;
+  
+  const u = user as any;
+  
+  // Safely extract role name from any format the backend may return
+  let roleName = "";
+  if (typeof u?.role === "string") roleName = u.role.toLowerCase();
+  else if (typeof u?.role === "object" && u?.role !== null) roleName = (u.role?.name || u.role?.display_name || "").toLowerCase();
+  if (!roleName && u?.role_name) roleName = String(u.role_name).toLowerCase();
+
+  const isAdmin = Boolean(u?.is_superuser) || ["admin", "administrador", "gerencia", "super admin", "superadmin"].includes(roleName);
+  
+  const filteredNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
 
   const companyLogo = configs.find((c) => c.key === "COMPANY_LOGO")?.value;
   const companyName = configs.find((c) => c.key === "COMPANY_NAME")?.value || "DLA Redes y Seguridad";
 
   return (
-    <aside className={cn(
-      "hidden md:flex flex-col border-r bg-card transition-all duration-300",
-      sidebarOpen ? "w-64" : "w-16",
-    )}>
-      <div className="flex h-16 items-center border-b px-4">
+    <>
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 z-30 bg-black/50 md:hidden backdrop-blur-sm transition-opacity" 
+          onClick={() => useUIStore.setState({ sidebarOpen: false })} 
+        />
+      )}
+      <aside className={cn(
+        "flex flex-col border-r bg-card transition-all duration-300 print:hidden",
+        "fixed md:relative z-40 inset-y-0 left-0 h-full",
+        sidebarOpen ? "w-64 translate-x-0" : "-translate-x-full md:translate-x-0 md:w-16",
+      )}>
+        <div className="flex h-16 items-center border-b px-4">
         <div className="flex items-center gap-2">
           {companyLogo ? (
             <div className="h-8 w-8 rounded-lg border bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
@@ -66,7 +86,7 @@ export default function Sidebar() {
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto p-2 space-y-1">
-        {navItems.map((item) => {
+        {filteredNavItems.map((item) => {
           const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
           return (
             <Link
@@ -128,5 +148,6 @@ export default function Sidebar() {
         </div>
       )}
     </aside>
+    </>
   );
 }

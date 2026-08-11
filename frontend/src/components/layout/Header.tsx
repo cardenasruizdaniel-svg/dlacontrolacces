@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
-import { Menu, Moon, Sun, LogOut, User, Settings, Smartphone } from "lucide-react";
+import { Menu, Moon, Sun, LogOut, User, Settings, Smartphone, Monitor } from "lucide-react";
 
 export default function Header() {
   const { user, logout } = useAuthStore();
@@ -15,7 +15,7 @@ export default function Header() {
   const isAdmin = user?.is_superuser || user?.role_id;
 
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-card px-4">
+    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 print:hidden">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={toggleSidebar}>
           <Menu className="h-5 w-5" />
@@ -28,7 +28,7 @@ export default function Header() {
       <div className="flex items-center gap-3">
         {isAdmin && (
           <Link href="/mobile">
-            <Button size="sm" className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-md border-0 transition-all hover:scale-105">
+            <Button size="sm" className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-primary-foreground font-semibold shadow-md border-0 transition-all hover:scale-105 rounded-xl">
               <Smartphone className="h-4 w-4" />
               <span>Acceso App Móvil</span>
               <span className="bg-white/20 text-[10px] px-1.5 py-0.5 rounded-full font-mono">Admin</span>
@@ -36,7 +36,7 @@ export default function Header() {
           </Link>
         )}
         <Button variant="ghost" size="icon" onClick={toggleTheme}>
-          {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          {theme === "light" ? <Sun className="h-4 w-4 text-amber-500" /> : theme === "dark" ? <Moon className="h-4 w-4 text-cyan-400" /> : <Monitor className="h-4 w-4 text-muted-foreground" />}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

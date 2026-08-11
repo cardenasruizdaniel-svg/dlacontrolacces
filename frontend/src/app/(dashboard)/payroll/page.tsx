@@ -7,9 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Plus, DollarSign, Calculator, FileText, CheckCircle2, AlertCircle, Eye, Play } from "lucide-react";
+import { Plus, DollarSign, Calculator, FileText, CheckCircle2, AlertCircle, Eye, Play, Search, Calendar, History, TrendingUp, Printer } from "lucide-react";
+import { CuentaDeCobroTemplate } from "@/components/payroll/CuentaDeCobroTemplate";
+import { useSystemConfig } from "@/lib/useSystemConfig";
 
 export default function PayrollPage() {
+  const { configs } = useSystemConfig();
+  const minimumWage = Number(configs.find(c => c.key === "MINIMUM_WAGE")?.value || 1300000);
+  const transportAllowance = Number(configs.find(c => c.key === "TRANSPORT_ALLOWANCE")?.value || 162000);
   const [periods, setPeriods] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -26,14 +31,63 @@ export default function PayrollPage() {
   const [contracts, setContracts] = useState<any[]>([]);
   const [calcResults, setCalcResults] = useState<any[]>([]);
   const [calculating, setCalculating] = useState(false);
+
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const companyId = typeof window !== "undefined" ? localStorage.getItem("company_id") || "dla-company-main" : "dla-company-main";
+
+  const [activeTab, setActiveTab] = useState<"history" | "pending">("history");
+  const [pendingReport, setPendingReport] = useState<any[]>([]);
+  const [loadingReport, setLoadingReport] = useState(false);
+  
+  const [printData, setPrintData] = useState<any>(null);
+  const printRef = React.useRef<HTMLDivElement>(null);
+
+  const handlePrint = async (record: any, period: any) => {
+    setPrintData({ 
+      employee: record.contract.employee, 
+      company: { name: "DLA Redes y Seguridad", tax_id: "900123456-1", address: "Bogotá", city: "Bogotá" }, 
+      period, 
+      amount: record.result.net_pay 
+    });
+    
+    // Wait for state to update and render
+    setTimeout(() => {
+      window.print();
+    }, 500);
+  };
+  const [reportDates, setReportDates] = useState({
+    start: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-01`,
+    end: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-30`,
+  });
+
+  const loadPendingReport = useCallback(async () => {
+    setLoadingReport(true);
+    try {
+      const res = await api.get(`/payroll/pending-report`, {
+        params: {
+          company_id: companyId,
+          start_date: reportDates.start,
+          end_date: reportDates.end
+        }
+      });
+      setPendingReport(res.data.report || []);
+    } catch {
+      setPendingReport([]);
+    }
+    setLoadingReport(false);
+  }, [companyId, reportDates]);
+
+  useEffect(() => {
+    if (activeTab === "pending") {
+      loadPendingReport();
+    }
+  }, [activeTab, loadPendingReport]);
+
 
   const showToast = (type: "success" | "error", message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
   };
-
-  const companyId = typeof window !== "undefined" ? localStorage.getItem("company_id") || "dla-company-main" : "dla-company-main";
 
   const loadPeriods = useCallback(async () => {
     setLoading(true);
@@ -93,9 +147,9 @@ export default function PayrollPage() {
           });
         } catch {
           // Fallback calculation in client according to CST
-          const salary = Number(contract.salary || 1300000);
+          const salary = Number(contract.salary || minimumWage);
           const isTrans = contract.transportation_assistance ?? true;
-          const transVal = (salary <= 2600000 && isTrans) ? 162000 : 0;
+          const transVal = (salary <= (minimumWage * 2) && isTrans) ? transportAllowance : 0;
           const healthDed = salary * 0.04;
           const pensionDed = salary * 0.04;
           const netPay = (salary + transVal) - (healthDed + pensionDed);
@@ -133,7 +187,8 @@ export default function PayrollPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="w-full relative">
+      <div className="space-y-6 print:hidden">
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-white text-sm max-w-md ${toast.type === "success" ? "bg-green-600" : "bg-red-600"}`}>
@@ -150,14 +205,14 @@ export default function PayrollPage() {
         <Button onClick={() => setDialogOpen(true)}><Plus className="mr-2 h-4 w-4" />Nuevo Período de Nómina</Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <Card><CardContent className="p-6 flex items-center gap-4">
           <div className="rounded-xl bg-green-50 text-green-600 p-3"><DollarSign className="h-5 w-5" /></div>
-          <div><p className="text-xs text-muted-foreground">Salario Mínimo (SMLV)</p><p className="text-xl font-bold">$1.300.000 COP</p></div>
+          <div><p className="text-xs text-muted-foreground">Salario Mínimo (SMLV)</p><p className="text-xl font-bold">${minimumWage.toLocaleString("es-CO")} COP</p></div>
         </CardContent></Card>
         <Card><CardContent className="p-6 flex items-center gap-4">
           <div className="rounded-xl bg-blue-50 text-blue-600 p-3"><DollarSign className="h-5 w-5" /></div>
-          <div><p className="text-xs text-muted-foreground">Auxilio de Transporte</p><p className="text-xl font-bold">$162.000 COP</p></div>
+          <div><p className="text-xs text-muted-foreground">Auxilio de Transporte</p><p className="text-xl font-bold">${transportAllowance.toLocaleString("es-CO")} COP</p></div>
         </CardContent></Card>
         <Card><CardContent className="p-6 flex items-center gap-4">
           <div className="rounded-xl bg-purple-50 text-purple-600 p-3"><Calculator className="h-5 w-5" /></div>
@@ -169,12 +224,19 @@ export default function PayrollPage() {
         </CardContent></Card>
       </div>
 
-      <Card>
+
+      <div className="flex gap-2 mb-4 border-b border-slate-200 pb-2">
+        <Button variant={activeTab === "history" ? "default" : "ghost"} onClick={() => setActiveTab("history")}><History className="mr-2 h-4 w-4" /> Historial de Nóminas</Button>
+        <Button variant={activeTab === "pending" ? "default" : "ghost"} onClick={() => setActiveTab("pending")}><TrendingUp className="mr-2 h-4 w-4" /> Liquidación Pendiente (Tiempo Real)</Button>
+      </div>
+
+      {activeTab === "history" && (
+        <Card>
         <CardHeader>
           <CardTitle>Períodos de Nómina y Liquidación</CardTitle>
           <CardDescription>Gestión de liquidación según tipos de contrato (Término Fijo, Indefinido, Obra u Labor, Por Horas, Prestación de Servicios, Aprendizaje SENA)</CardDescription>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -222,6 +284,85 @@ export default function PayrollPage() {
           </Table>
         </CardContent>
       </Card>
+
+
+      )}
+
+      {activeTab === "pending" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Reporte de Liquidación Pendiente</CardTitle>
+            <CardDescription>Resumen en tiempo real de lo adeudado a los empleados según su estado de turnos y salario fijo.</CardDescription>
+            <div className="flex items-end gap-3 pt-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Desde</label>
+                <Input type="date" value={reportDates.start} onChange={(e) => setReportDates({...reportDates, start: e.target.value})} className="h-9 w-40" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Hasta</label>
+                <Input type="date" value={reportDates.end} onChange={(e) => setReportDates({...reportDates, end: e.target.value})} className="h-9 w-40" />
+              </div>
+              <Button onClick={loadPendingReport}><Search className="mr-2 h-4 w-4" /> Consultar</Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0 overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Empleado</TableHead>
+                  <TableHead>Tipo Salario / Base</TableHead>
+                  <TableHead>Turnos (C/P/SA)</TableHead>
+                  <TableHead>Horas Laboradas</TableHead>
+                  <TableHead>Devengado Base</TableHead>
+                  <TableHead>Extras / Recargos</TableHead>
+                  <TableHead>Deducciones</TableHead>
+                  <TableHead>Costo Empleador (Parafiscales)</TableHead>
+                  <TableHead>Total a Pagar</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loadingReport ? (
+                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Calculando liquidación pendiente...</TableCell></TableRow>
+                ) : pendingReport.length === 0 ? (
+                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No hay datos en el rango seleccionado.</TableCell></TableRow>
+                ) : (
+                  pendingReport.map((r) => (
+                    <TableRow key={r.employee_id}>
+                      <TableCell>
+                        <div className="font-bold">{r.full_name}</div>
+                        <div className="text-xs text-muted-foreground font-mono">{r.document}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="mb-1">{r.salary_type}</Badge>
+                        <div className="text-xs text-muted-foreground">${Number(r.base_salary || 0).toLocaleString("es-CO")}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-xs space-y-0.5">
+                          <div className="text-green-600 font-bold">Completados: {r.status_counts.completed || 0}</div>
+                          <div className="text-red-600 font-bold">Perdidos: {r.status_counts.lost || 0}</div>
+                          <div className="text-orange-600 font-bold">Salida Antici.: {r.status_counts.salida_anticipada || 0}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm font-semibold">{r.total_worked_hours} h</div>
+                        <div className="text-xs text-muted-foreground">Extras: {r.total_overtime_hours} h</div>
+                      </TableCell>
+                      <TableCell className="text-blue-700 font-semibold">${Number(r.accrued_base).toLocaleString("es-CO")}</TableCell>
+                      <TableCell className="text-green-700 font-semibold">+${Number(r.extras_sundays_holidays).toLocaleString("es-CO")}</TableCell>
+                      <TableCell className="text-red-600 font-semibold">-${Number(r.deductions).toLocaleString("es-CO")}</TableCell>
+                      <TableCell className="text-purple-700 font-semibold">
+                        <div className="text-sm">${Number(r.total_employer_cost || 0).toLocaleString("es-CO")}</div>
+                        <div className="text-xs text-muted-foreground">+${Number(r.employer_parafiscals || 0).toLocaleString("es-CO")} paraf.</div>
+                      </TableCell>
+                      <TableCell className="text-emerald-700 font-black text-lg">${Number(r.total_to_pay).toLocaleString("es-CO")}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Diálogo Crear Período */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -278,13 +419,15 @@ export default function PayrollPage() {
                     <TableHead>Salario Base</TableHead>
                     <TableHead>Devengado Total</TableHead>
                     <TableHead>Deducciones Ley (4%+4%)</TableHead>
+                    <TableHead>Costo Empleador (Total)</TableHead>
                     <TableHead>Neto a Pagar</TableHead>
                     <TableHead>Prestaciones Sociales</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {calcResults.length === 0 ? (
-                    <TableRow><TableCell colSpan={7} className="text-center py-6 text-muted-foreground">No hay contratos activos para liquidar en este período</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={9} className="text-center py-6 text-muted-foreground">No hay contratos activos para liquidar en este período</TableCell></TableRow>
                   ) : (
                     calcResults.map(({ contract, result }, idx) => (
                       <TableRow key={idx}>
@@ -293,6 +436,7 @@ export default function PayrollPage() {
                         <TableCell className="text-sm">${Number(contract.salary).toLocaleString("es-CO")}</TableCell>
                         <TableCell className="text-sm font-semibold text-green-700">${Number(result.total_earnings || 0).toLocaleString("es-CO")}</TableCell>
                         <TableCell className="text-sm text-red-600">${Number(result.total_deductions || 0).toLocaleString("es-CO")}</TableCell>
+                        <TableCell className="text-sm font-semibold text-purple-700">${Number(result.total_employer_cost || 0).toLocaleString("es-CO")}</TableCell>
                         <TableCell className="text-sm font-bold text-blue-900">${Number(result.net_pay || 0).toLocaleString("es-CO")}</TableCell>
                         <TableCell className="text-xs">
                           {result.social_benefits ? (
@@ -303,6 +447,11 @@ export default function PayrollPage() {
                           ) : (
                             "No aplica"
                           )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm" onClick={() => handlePrint({ contract, result }, selectedPeriod)}>
+                            <Printer className="h-4 w-4 mr-1 text-slate-600" /> Imprimir Cobro
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))
@@ -316,6 +465,21 @@ export default function PayrollPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
+      
+      {/* Print Template (Only visible when printing) */}
+      <div className="hidden print:block absolute inset-0 z-[99999] bg-white text-black p-0 m-0 w-full">
+        {printData && (
+          <CuentaDeCobroTemplate 
+            ref={printRef}
+            employee={printData.employee}
+            company={printData.company}
+            period={printData.period}
+            amount={printData.amount}
+          />
+        )}
+      </div>
+
     </div>
   );
 }

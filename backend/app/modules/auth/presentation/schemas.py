@@ -47,6 +47,9 @@ class UserResponse(BaseModel):
     mfa_enabled: bool
     company_id: str | None = None
     role_id: str | None = None
+    role: dict | str | None = None
+    role_name: str | None = None
+    platform_access: str | None = "both"
 
 
 class UserListResponse(BaseModel):

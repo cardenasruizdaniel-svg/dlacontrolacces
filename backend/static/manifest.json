@@ -1,0 +1,42 @@
+{
+  "name": "DLA Access Enterprise PWA",
+  "short_name": "DLA Access Mobile",
+  "description": "Plataforma Enterprise de Control de Acceso, Asistencia, Nomina y Gestión de Campo por DLA Redes y Seguridad",
+  "start_url": "/mobile",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#1e293b",
+  "lang": "es-CO",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Iniciar Turno",
+      "short_name": "Turno",
+      "description": "Marcación de asistencia y geolocalización",
+      "url": "/mobile",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Mi Programación",
+      "short_name": "Agenda",
+      "description": "Consulta de turnos asignados",
+      "url": "/scheduling",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192" }]
+    }
+  ]
+}

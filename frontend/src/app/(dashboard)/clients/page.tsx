@@ -390,31 +390,31 @@ export default function ClientsPage() {
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <h3 className="font-semibold text-slate-900">{client.name}</h3>
-                    <p className="text-xs text-slate-500 font-mono">{client.nit ? `NIT: ${client.nit}` : "Sin NIT"}</p>
-                    <p className="text-xs text-slate-600 flex items-center gap-1 mt-1">
-                      <MapPin className="h-3 w-3 text-red-500" />
+                    <h3 className="font-semibold text-foreground">{client.name}</h3>
+                    <p className="text-xs text-muted-foreground font-mono">{client.nit ? `NIT: ${client.nit}` : "Sin NIT"}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                      <MapPin className="h-3 w-3 text-destructive" />
                       {client.city || "Armenia"} ({client.department || "Quindío"})
                     </p>
                   </div>
-                  <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+                  <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
                     {typeLabels[client.client_type] || client.client_type}
                   </Badge>
                 </div>
 
                 <div className="mt-3 pt-3 border-t flex items-center justify-between text-xs gap-1">
                   {client.latitude && client.longitude ? (
-                    <span className="text-green-600 font-medium flex items-center gap-1 truncate text-[11px]">
+                    <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 truncate text-[11px]">
                       <Navigation className="h-3 w-3 shrink-0" />Georreferenciado ({client.geofence_radius || 100}m)
                     </span>
                   ) : (
-                    <span className="text-amber-600 font-normal text-[11px]">Sin Georreferencia</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-normal text-[11px]">Sin Georreferencia</span>
                   )}
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button variant="outline" size="sm" className="h-7 px-2 text-[11px] font-semibold text-blue-700 border-blue-200 hover:bg-blue-50" onClick={(e) => handleOpenEdit(client, e)}>
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-[11px] font-semibold text-primary border-primary/30 hover:bg-primary/10" onClick={(e) => handleOpenEdit(client, e)}>
                       ✏️ Editar
                     </Button>
-                    <Button variant="outline" size="sm" className="h-7 px-2 text-[11px] font-semibold text-rose-700 border-rose-200 hover:bg-rose-50" onClick={(e) => handleDeleteClient(client, e)}>
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-[11px] font-semibold text-destructive border-destructive/30 hover:bg-destructive/10" onClick={(e) => handleDeleteClient(client, e)}>
                       🗑️ Eliminar
                     </Button>
                   </div>

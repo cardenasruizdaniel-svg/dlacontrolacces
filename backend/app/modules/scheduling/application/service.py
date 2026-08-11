@@ -142,13 +142,8 @@ class SchedulingService:
             shift_count = (await db.execute(select(func.count(Shift.id)).where(Shift.shift_template_id == template_id))).scalar() or 0
             series_count = (await db.execute(select(func.count(ScheduleSeries.id)).where(ScheduleSeries.shift_template_id == template_id))).scalar() or 0
 
-            total_movements = shift_count + series_count
-            if total_movements > 0:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"No se puede eliminar la plantilla '{template.name}' porque está vinculada a {total_movements} turnos o series de la programación requeridos para informes. Puede modificar sus parámetros sin borrar el historial."
-                )
-
+            # Allow soft delete even if in use. The history remains for old shifts.
+            
         await self.template_repo.soft_delete(template_id)
 
     async def list_templates(self, company_id: str, page: int = 1, page_size: int = 100) -> dict:
@@ -336,14 +331,16 @@ class SchedulingService:
 
         effective_break = min(break_minutes, max(0, work_minutes - 1))
         total_hours = (work_minutes - effective_break) / 60
-        if total_hours > 12:
+        if total_hours > 24:
             conflicts.append({
                 "type": "excessive_hours",
-                "message": f"Jornada de {total_hours:.1f}h excede el máximo de 12 horas diarias",
+                "message": f"Jornada de {total_hours:.1f}h excede el máximo de 24 horas diarias",
                 "conflicting_shift_id": None,
                 "employee_id": employee_id,
                 "date": str(shift_date_val),
             })
+        elif total_hours > 12:
+            warnings.append(f"Jornada de {total_hours:.1f}h excede las 12 horas diarias (revisar límites legales)")
 
         # 3. Rest period check (< 8h between consecutive shifts)
         rest_conflicts = await self.shift_repo.check_rest_period(employee_id, shift_date_val, start_time, exclude_shift_id)

@@ -53,6 +53,9 @@ const emptyContract: Record<string, any> = {
   risk_level: "1",
   is_renewable: true,
   notes: "",
+  payment_method: "",
+  bank_name: "",
+  bank_account_number: "",
 };
 
 const schemeLabels: Record<string, string> = {
@@ -234,6 +237,30 @@ function ContractForm({
             <option value="monthly">📆 Mensual (Cada 30 días)</option>
           </select>
         </div>
+
+        <div>
+          <label className="text-xs font-semibold">Entidad Bancaria</label>
+          <select
+            value={data.bank_name || ""}
+            onChange={(e) => set("bank_name", e.target.value)}
+            className="w-full p-2 border rounded-md text-xs bg-background"
+          >
+            <option value="">-- Seleccionar Banco --</option>
+            {(catalogs?.banks || []).map((b: any) => (
+              <option key={b.id || b.name} value={b.name}>{b.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold">Número de Cuenta</label>
+          <Input 
+            value={data.bank_account_number || ""} 
+            onChange={(e) => set("bank_account_number", e.target.value)} 
+            placeholder="Ej. 123456789"
+            className="text-xs border-blue-300 bg-blue-50/30 dark:bg-blue-900/10" 
+          />
+        </div>
       </div>
 
       <div className="border-t pt-3 space-y-2">
@@ -359,6 +386,9 @@ export default function ContractsPage() {
   const [docFileSize, setDocFileSize] = useState<number>(0);
   const [uploadingDoc, setUploadingDoc] = useState<boolean>(false);
 
+  // Catalogs State
+  const [catalogs, setCatalogs] = useState<any>({});
+
   // Digital Signature State for Contracts
   const [signatureModalOpen, setSignatureModalOpen] = useState<boolean>(false);
   const [signTargetContract, setSignTargetContract] = useState<any | null>(null);
@@ -404,11 +434,31 @@ export default function ContractsPage() {
     }
   }, []);
 
+  const fetchCatalogs = useCallback(async () => {
+    try {
+      const [epsRes, afpRes, arlRes, banksRes] = await Promise.all([
+        api.get("/catalogs/eps"),
+        api.get("/catalogs/afp"),
+        api.get("/catalogs/arl"),
+        api.get("/catalogs/banks")
+      ]);
+      setCatalogs({
+        eps: epsRes.data?.map((e: any) => e.name) || [],
+        afp: afpRes.data?.map((e: any) => e.name) || [],
+        arl: arlRes.data?.map((e: any) => e.name) || [],
+        banks: banksRes.data || []
+      });
+    } catch (err) {
+      console.warn("Fallo cargando catálogos:", err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchEmployees();
     fetchContracts();
     fetchContractTypes();
-  }, [fetchEmployees, fetchContracts, fetchContractTypes]);
+    fetchCatalogs();
+  }, [fetchEmployees, fetchContracts, fetchContractTypes, fetchCatalogs]);
 
   const openNew = () => {
     fetchEmployees();
@@ -440,6 +490,9 @@ export default function ContractsPage() {
       arl_provider: contract.arl_provider || "Positiva Compañía de Seguros (ARL Positiva)",
       risk_level: contract.risk_level || "1",
       notes: contract.notes || "",
+      payment_method: contract.payment_method || "",
+      bank_name: contract.bank_name || "",
+      bank_account_number: contract.bank_account_number || "",
     });
     setError("");
     setDialogOpen(true);
@@ -715,6 +768,7 @@ export default function ContractsPage() {
             onChange={setFormData}
             employees={employees}
             contractTypes={contractTypes}
+            catalogs={catalogs}
             editing={editMode}
           />
 

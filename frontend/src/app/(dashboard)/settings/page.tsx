@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Shield, Building2, ListChecks, Plus, Pencil, Trash2, CheckCircle2, AlertCircle, MapPin, Key, Save, Loader2, Settings, Upload } from "lucide-react";
+import { Shield, Building2, ListChecks, Plus, Pencil, Trash2, CheckCircle2, AlertCircle, MapPin, Key, Save, Loader2, Settings, Upload, Clock, Camera } from "lucide-react";
 import { useSystemConfig } from "@/lib/useSystemConfig";
 
-type CatalogCategory = "departments" | "cities" | "eps" | "arl" | "afp";
+type CatalogCategory = "departments" | "cities" | "eps" | "arl" | "afp" | "banks";
 
 interface CatalogItem {
   id: string;
@@ -42,6 +42,23 @@ export default function SettingsPage() {
       setLocalConfigs(map);
     }
   }, [configs]);
+
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [cities, setCities] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchLocs = async () => {
+      try {
+        const [depRes, cityRes] = await Promise.all([
+          api.get("/catalogs/departments"),
+          api.get("/catalogs/cities")
+        ]);
+        setDepartments(depRes.data || []);
+        setCities(cityRes.data || []);
+      } catch (err) {}
+    };
+    fetchLocs();
+  }, []);
 
   const showToast = (type: "success" | "error", message: string) => {
     setToast({ type, message });
@@ -111,8 +128,8 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSaveConfigItem = async (key: string, description?: string) => {
-    const val = localConfigs[key] ?? "";
+  const handleSaveConfigItem = async (key: string, description?: string, explicitValue?: string) => {
+    const val = explicitValue !== undefined ? explicitValue : (localConfigs[key] ?? "");
     const res = await updateConfig(key, val, description);
     if (res.success) {
       showToast("success", `Configuración de '${key}' guardada correctamente`);
@@ -240,6 +257,32 @@ export default function SettingsPage() {
                   />
                 </div>
 
+                <div className="p-4 bg-white border rounded-xl shadow-sm space-y-2 col-span-full md:col-span-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                      <Camera className="h-4 w-4 text-indigo-600" /> Tolerancia Biométrica (Rostro)
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleSaveConfigItem("FACE_MATCH_THRESHOLD", "Porcentaje mínimo de coincidencia para reconocimiento facial.")}
+                      disabled={savingKey === "FACE_MATCH_THRESHOLD"}
+                    >
+                      {savingKey === "FACE_MATCH_THRESHOLD" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                      Guardar
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Porcentaje de coincidencia (ej: 70 para 70%). Entre menor el porcentaje, menos estricto será el sistema.
+                  </p>
+                  <Input
+                    type="number"
+                    value={localConfigs["FACE_MATCH_THRESHOLD"] || "60"}
+                    onChange={(e) => setLocalConfigs({ ...localConfigs, FACE_MATCH_THRESHOLD: e.target.value })}
+                    placeholder="70"
+                  />
+                </div>
+
                 <div className="p-4 bg-white border rounded-xl shadow-sm space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-sm font-bold text-gray-900">GEOFENCE_RADIUS_METERS</label>
@@ -293,6 +336,98 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Seccion 1.5: Tiempos y Tolerancias Operativas */}
+      <Card className="border-amber-200 bg-amber-50/20">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-amber-600 text-white rounded-lg">
+              <Clock className="h-5 w-5" />
+            </div>
+            <div>
+              <CardTitle className="text-xl text-amber-950">Tiempos y Tolerancias Operativas</CardTitle>
+              <CardDescription>
+                Configure los tiempos límite y notificaciones para los turnos operativos. Asigne un valor de 0 para desactivar la función respectiva.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {loadingConfigs ? (
+            <div className="flex items-center justify-center py-6 text-sm text-gray-500 gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-amber-600" /> Cargando configuraciones...
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-white border rounded-xl shadow-sm space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-bold text-gray-900">Tolerancia Turno Perdido</label>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleSaveConfigItem("SHIFT_LOST_TOLERANCE_MINUTES", "Minutos de tolerancia antes de marcar un turno como perdido.")}
+                    disabled={savingKey === "SHIFT_LOST_TOLERANCE_MINUTES"}
+                  >
+                    {savingKey === "SHIFT_LOST_TOLERANCE_MINUTES" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                    Guardar
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Minutos tras finalizar el turno antes de darlo por perdido (ej: 20).</p>
+                <Input
+                  type="number"
+                  value={localConfigs["SHIFT_LOST_TOLERANCE_MINUTES"] || "20"}
+                  onChange={(e) => setLocalConfigs({ ...localConfigs, SHIFT_LOST_TOLERANCE_MINUTES: e.target.value })}
+                  placeholder="20"
+                />
+              </div>
+
+              <div className="p-4 bg-white border rounded-xl shadow-sm space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-bold text-gray-900">Alerta Inicio de Turno</label>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleSaveConfigItem("SHIFT_START_ALERT_MINUTES", "Minutos antes del turno para alertar al empleado.")}
+                    disabled={savingKey === "SHIFT_START_ALERT_MINUTES"}
+                  >
+                    {savingKey === "SHIFT_START_ALERT_MINUTES" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                    Guardar
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Minutos antes para enviar la notificación de inicio (ej: 15, 0 = no avisar).</p>
+                <Input
+                  type="number"
+                  value={localConfigs["SHIFT_START_ALERT_MINUTES"] || "15"}
+                  onChange={(e) => setLocalConfigs({ ...localConfigs, SHIFT_START_ALERT_MINUTES: e.target.value })}
+                  placeholder="15"
+                />
+              </div>
+
+              <div className="p-4 bg-white border rounded-xl shadow-sm space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-bold text-gray-900">Alerta Fin de Turno</label>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleSaveConfigItem("SHIFT_END_ALERT_MINUTES", "Minutos antes del fin de turno para alertar al empleado.")}
+                    disabled={savingKey === "SHIFT_END_ALERT_MINUTES"}
+                  >
+                    {savingKey === "SHIFT_END_ALERT_MINUTES" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                    Guardar
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Minutos antes para enviar la notificación de finalización (ej: 15, 0 = no avisar).</p>
+                <Input
+                  type="number"
+                  value={localConfigs["SHIFT_END_ALERT_MINUTES"] || "15"}
+                  onChange={(e) => setLocalConfigs({ ...localConfigs, SHIFT_END_ALERT_MINUTES: e.target.value })}
+                  placeholder="15"
+                />
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Seccion 2: Tablas Maestras Colombia */}
       <Card className="border-blue-200 bg-blue-50/20">
         <CardHeader>
@@ -312,14 +447,15 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           {/* Categorías Navigation */}
-          <div className="flex flex-wrap gap-2 mb-4 border-b pb-3">
-            {[
-              { id: "departments", label: "Departamentos" },
-              { id: "cities", label: "Ciudades / Municipios" },
-              { id: "eps", label: "EPS (Salud)" },
-              { id: "arl", label: "ARL (Riesgos Laborales)" },
-              { id: "afp", label: "AFP (Pensiones)" },
-            ].map((tab) => (
+            <div className="flex gap-2 border-b border-border mb-4 overflow-x-auto pb-1">
+              {[
+                { id: "departments", label: "Departamentos" },
+                { id: "cities", label: "Ciudades" },
+                { id: "eps", label: "EPS (Salud)" },
+                { id: "arl", label: "ARL (Riesgos)" },
+                { id: "afp", label: "AFP (Pensiones)" },
+                { id: "banks", label: "Bancos (Nómina)" },
+              ].map((tab) => (
               <Button
                 key={tab.id}
                 variant={activeTab === tab.id ? "default" : "outline"}
@@ -400,6 +536,44 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700">Dirección</label>
+                <Input
+                  value={localConfigs["COMPANY_ADDRESS"] || ""}
+                  onChange={(e) => setLocalConfigs({ ...localConfigs, COMPANY_ADDRESS: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700">Departamento</label>
+                <select
+                  value={localConfigs["COMPANY_DEPARTMENT"] || ""}
+                  onChange={(e) => setLocalConfigs({ ...localConfigs, COMPANY_DEPARTMENT: e.target.value, COMPANY_CITY: "" })}
+                  className="w-full border p-2 rounded-md text-sm bg-background"
+                >
+                  <option value="">Seleccionar...</option>
+                  {departments.map((d: any) => (
+                    <option key={d.id || d.name || d} value={d.name || d}>{d.name || d}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700">Ciudad</label>
+                <select
+                  value={localConfigs["COMPANY_CITY"] || ""}
+                  onChange={(e) => setLocalConfigs({ ...localConfigs, COMPANY_CITY: e.target.value })}
+                  className="w-full border p-2 rounded-md text-sm bg-background"
+                  disabled={!localConfigs["COMPANY_DEPARTMENT"]}
+                >
+                  <option value="">Seleccionar...</option>
+                  {cities
+                    .filter((c: any) => !localConfigs["COMPANY_DEPARTMENT"] || c.department_name === localConfigs["COMPANY_DEPARTMENT"] || c.department === localConfigs["COMPANY_DEPARTMENT"])
+                    .map((c: any) => (
+                      <option key={c.id || c.name || c} value={c.name || c}>{c.name || c}</option>
+                    ))}
+                </select>
+              </div>
+            </div>
             {/* Logo de la Empresa */}
             <div className="space-y-2 border p-3 rounded-xl bg-gray-50/50">
               <label className="text-xs font-bold text-gray-700 block">Logo Oficial de la Empresa</label>
@@ -458,11 +632,15 @@ export default function SettingsPage() {
             <Button
               className="bg-blue-600 hover:bg-blue-700 w-full"
               onClick={async () => {
-                await handleSaveConfigItem("COMPANY_NAME", "Nombre oficial de la empresa");
-                await handleSaveConfigItem("COMPANY_NIT", "NIT de la empresa");
-                await handleSaveConfigItem("COMPANY_EMAIL", "Email corporativo");
-                await handleSaveConfigItem("COMPANY_PHONE", "Teléfono corporativo");
-                await handleSaveConfigItem("COMPANY_LOGO", "Logo oficial de la empresa");
+                const snap = { ...localConfigs };
+                await handleSaveConfigItem("COMPANY_NAME", "Nombre oficial de la empresa", snap["COMPANY_NAME"]);
+                await handleSaveConfigItem("COMPANY_NIT", "NIT de la empresa", snap["COMPANY_NIT"]);
+                await handleSaveConfigItem("COMPANY_EMAIL", "Email corporativo", snap["COMPANY_EMAIL"]);
+                await handleSaveConfigItem("COMPANY_PHONE", "Teléfono corporativo", snap["COMPANY_PHONE"]);
+                await handleSaveConfigItem("COMPANY_ADDRESS", "Dirección de la empresa", snap["COMPANY_ADDRESS"]);
+                await handleSaveConfigItem("COMPANY_DEPARTMENT", "Departamento de la empresa", snap["COMPANY_DEPARTMENT"]);
+                await handleSaveConfigItem("COMPANY_CITY", "Ciudad de la empresa", snap["COMPANY_CITY"]);
+                await handleSaveConfigItem("COMPANY_LOGO", "Logo oficial de la empresa", snap["COMPANY_LOGO"]);
               }}
             >
               <Save className="h-4 w-4 mr-2" /> Guardar Datos de la Empresa

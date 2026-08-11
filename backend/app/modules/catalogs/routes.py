@@ -53,6 +53,21 @@ DEFAULT_AFP = [
   {"id": "afp-05", "code": "AFP005", "name": "Colpensiones (Administradora Pública)", "is_active": True},
 ]
 
+DEFAULT_BANKS = [
+  {"id": "bank-01", "name": "Bancolombia"},
+  {"id": "bank-02", "name": "Banco de Bogotá"},
+  {"id": "bank-03", "name": "Davivienda"},
+  {"id": "bank-04", "name": "BBVA Colombia"},
+  {"id": "bank-05", "name": "Banco de Occidente"},
+  {"id": "bank-06", "name": "Banco Popular"},
+  {"id": "bank-07", "name": "Banco AV Villas"},
+  {"id": "bank-08", "name": "Scotiabank Colpatria"},
+  {"id": "bank-09", "name": "Banco Caja Social"},
+  {"id": "bank-10", "name": "Banco Agrario"},
+  {"id": "bank-11", "name": "Nequi"},
+  {"id": "bank-12", "name": "DaviPlata"},
+]
+
 # In-memory stores for runtime dynamic additions
 catalogs_db = {
   "departments": list(COLOMBIAN_DEPARTMENTS),
@@ -60,6 +75,7 @@ catalogs_db = {
   "eps": list(DEFAULT_EPS),
   "arl": list(DEFAULT_ARL),
   "afp": list(DEFAULT_AFP),
+  "banks": list(DEFAULT_BANKS),
 }
 
 
@@ -95,6 +111,11 @@ async def list_arl():
 @router.get("/afp")
 async def list_afp():
     return catalogs_db["afp"]
+
+
+@router.get("/banks")
+async def list_banks():
+    return catalogs_db["banks"]
 
 
 @router.post("/{category}")

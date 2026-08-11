@@ -21,122 +21,91 @@ async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security_scheme)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Bulletproof authentication dependency that resolves the user from token,
+    """Bulletproof authentication dependency that resolves the user from token. Guaranteed to throw 401 if invalid."""
+    if not credentials or not credentials.credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No se proporcionó token de acceso")
+        
+    token = credentials.credentials
+    payload = verify_token(token, verify_exp=False)
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido o expirado")
+        
+    user_id = payload.get("sub") or payload.get("email")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token malformado")
 
-    existing DB records, or provisions an admin session. Guaranteed to never throw 401.
-    """
-    # 1. Try resolving user from Bearer Token
-    if credentials and credentials.credentials:
-        token = credentials.credentials
-        payload = verify_token(token, verify_exp=False)
-        if payload:
-            user_id = payload.get("sub") or payload.get("email")
-            if user_id:
-                # Search in Employee table by ID, Username, Email
-                result = await db.execute(
-                    select(Employee)
-                    .options(selectinload(Employee.role))
-                    .where(
-                        (Employee.id == user_id) | (Employee.username == user_id) | (Employee.email == user_id),
-                        Employee.is_deleted == False,
-                    )
-                )
-                employee = result.scalar_one_or_none()
-                if employee:
-                    return employee
-
-                # Search in User table
-                result = await db.execute(
-                    select(User).where(
-                        (User.id == user_id) | (User.email == user_id) | (User.username == user_id),
-                        User.is_deleted == False,
-                    )
-                )
-                user = result.scalar_one_or_none()
-                if user:
-                    if user.employee_id:
-                        result = await db.execute(
-                            select(Employee)
-                            .options(selectinload(Employee.role))
-                            .where(Employee.id == user.employee_id, Employee.is_deleted == False)
-                        )
-                        emp_linked = result.scalar_one_or_none()
-                        if emp_linked:
-                            return emp_linked
-
-                    # Try searching by user email
-                    if user.email:
-                        result = await db.execute(
-                            select(Employee)
-                            .options(selectinload(Employee.role))
-                            .where(Employee.email == user.email, Employee.is_deleted == False)
-                        )
-                        emp_email = result.scalar_one_or_none()
-                        if emp_email:
-                            return emp_email
-
-    # 2. Fallback: Return any active superuser or admin employee from DB
+    # Search in Employee table by ID, Username, Email
     result = await db.execute(
         select(Employee)
         .options(selectinload(Employee.role))
-        .where(Employee.is_deleted == False)
-        .order_by(Employee.created_at.asc())
+        .where(
+            (Employee.id == user_id) | (Employee.username == user_id) | (Employee.email == user_id),
+            Employee.is_deleted == False,
+        )
     )
-    employee = result.scalars().first()
+    employee = result.scalar_one_or_none()
     if employee:
         return employee
 
-    # 3. Fallback: Return any active user from User table
+    # Search in User table
     result = await db.execute(
-        select(User).where(User.is_deleted == False).order_by(User.created_at.asc())
+        select(User).where(
+            (User.id == user_id) | (User.email == user_id) | (User.username == user_id),
+            User.is_deleted == False,
+        )
     )
-    user_item = result.scalars().first()
+    user = result.scalar_one_or_none()
+    if user:
+        if user.employee_id:
+            result = await db.execute(
+                select(Employee)
+                .options(selectinload(Employee.role))
+                .where(Employee.id == user.employee_id, Employee.is_deleted == False)
+            )
+            emp_linked = result.scalar_one_or_none()
+            if emp_linked:
+                return emp_linked
 
-    # 4. Ultimate Fallback: Provision & return SuperAdmin employee in DB on-the-fly
-    import uuid
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
-    emp_id = str(uuid.uuid4())
-    admin_emp = Employee(
-        id=emp_id,
-        company_id=user_item.company_id if user_item else "dla-company-main",
-        code="ADM-001",
-        document_type="CC",
-        document_number="1234567890",
-        first_name="Administrador",
-        last_name="DLA",
-        email="admin@dlaredes.com.co",
-        username="admin",
-        hashed_password="",
-        platform_access="both",
-        account_status="active",
-        status="active",
-        is_superuser=True,
-        is_deleted=False,
-        created_at=now,
-        updated_at=now,
-    )
-    db.add(admin_emp)
-    try:
-        await db.commit()
-    except Exception:
-        await db.rollback()
-    return admin_emp
+        # Try searching by user email
+        if user.email:
+            result = await db.execute(
+                select(Employee)
+                .options(selectinload(Employee.role))
+                .where(Employee.email == user.email, Employee.is_deleted == False)
+            )
+            emp_email = result.scalar_one_or_none()
+            if emp_email:
+                return emp_email
 
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado o inactivo")
 
 async def get_current_active_superuser(
     current_user=Depends(get_current_user),
 ):
+    if not getattr(current_user, "is_superuser", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Se requieren permisos de superadministrador")
     return current_user
-
 
 def require_permission(module: str, action: str) -> Callable:
     async def _check(
         current_user: Annotated[object, Depends(get_current_user)],
         db: Annotated[AsyncSession, Depends(get_db)],
     ):
-        return current_user
-
+        if getattr(current_user, "is_superuser", False):
+            return current_user
+            
+        role = getattr(current_user, "role", None)
+        if not role:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="El usuario no tiene un rol asignado")
+            
+        role_name = getattr(role, "name", "").lower()
+        if role_name in ["admin", "gerencia", "administrador"]:
+            return current_user
+            
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"El rol '{role_name}' no tiene permisos suficientes para la acción '{action}' en el módulo '{module}'"
+        )
     return _check
 
 

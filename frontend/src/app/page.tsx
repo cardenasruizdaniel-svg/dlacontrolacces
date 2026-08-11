@@ -16,11 +16,8 @@ export default function Home() {
 
     if (token) {
       setIsAuthenticated(true);
-      if (isMobile) {
-        router.push("/mobile");
-      } else {
-        router.push("/dashboard");
-      }
+      // Let the dashboard layout handle platform access rules
+      router.push("/dashboard");
     } else {
       if (isMobile) {
         // Direct mobile login redirection to /mobile route

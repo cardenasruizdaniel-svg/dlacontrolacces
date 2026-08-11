@@ -15,8 +15,10 @@ export function usePWA() {
   // Update pending offline punches count
   const checkPendingPunches = useCallback(async () => {
     try {
-      const pending = await getPendingPunches();
-      setPendingCount(pending.length);
+      const pendingPunches = await getPendingPunches();
+      const { getOfflineMutations } = await import("@/lib/offlineQueue");
+      const pendingMutations = await getOfflineMutations();
+      setPendingCount(pendingPunches.length + pendingMutations.length);
     } catch {
       setPendingCount(0);
     }
@@ -27,9 +29,37 @@ export function usePWA() {
     if (!navigator.onLine || isSyncing) return;
     setIsSyncing(true);
     try {
-      const result = await syncOfflinePunches(api);
+      // 1. Sync specific offline punches (PWA module)
+      await syncOfflinePunches(api);
+      
+      // 2. Sync generic offline mutations
+      const { getOfflineMutations, removeOfflineMutation, incrementRetryCount } = await import("@/lib/offlineQueue");
+      const mutations = await getOfflineMutations();
+      
+      for (const mut of mutations) {
+        try {
+          // Replay the mutation
+          await api({
+            method: mut.method,
+            url: mut.url,
+            data: mut.data,
+            headers: mut.headers,
+          });
+          // If successful, remove from queue
+          await removeOfflineMutation(mut.id);
+        } catch (error: any) {
+          console.warn(`Error resyncing mutation ${mut.id}:`, error);
+          if (mut.retryCount >= 3 || (error.response && error.response.status >= 400 && error.response.status < 500)) {
+            // Client error (e.g. 400 Bad Request) or too many retries (500s), discard to avoid infinite loops
+            await removeOfflineMutation(mut.id);
+          } else {
+            // Network or 500 error, retry next time
+            await incrementRetryCount(mut.id);
+          }
+        }
+      }
+      
       await checkPendingPunches();
-      return result;
     } catch (err) {
       console.error("Error en sincronización PWA:", err);
     } finally {

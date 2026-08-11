@@ -7,9 +7,11 @@ import Header from "@/components/layout/Header";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Smartphone } from "lucide-react";
+import { usePWA } from "@/hooks/usePWA";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isLoading, loadUser } = useAuthStore();
+  const { isOnline, isSyncing, pendingCount } = usePWA();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -26,6 +28,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     if (!isLoading && !isAuthenticated) {
       const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+      
+      // DEBUG TOAST
+      if (typeof window !== "undefined") {
+         alert("Redirigiendo a login porque isAuthenticated es falso. Token actual: " + (localStorage.getItem("access_token") ? "Existe" : "Falta"));
+      }
+
       if (currentPath && currentPath !== "/" && currentPath !== "/login") {
         router.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
       } else {
@@ -111,12 +119,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
+  const platformAccess = (user as any)?.platform_access;
+  if (platformAccess === "mobile" && !isMobilePWA && !isAttendanceKiosk) {
+    return (
+      <div className="flex h-screen items-center justify-center text-muted-foreground text-sm flex-col gap-2">
+        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+        Redirigiendo a su plataforma móvil...
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden print:overflow-visible print:h-auto relative">
+      {!isOnline && (
+        <div className="absolute top-0 left-0 right-0 z-50 bg-rose-600 text-white text-[11px] py-1 text-center font-semibold print:hidden">
+          Sin conexión a internet. Los cambios se guardarán localmente.
+        </div>
+      )}
+      {isSyncing && pendingCount > 0 && (
+        <div className="absolute top-0 left-0 right-0 z-50 bg-amber-500 text-white text-[11px] py-1 text-center font-semibold animate-pulse print:hidden">
+          Sincronizando {pendingCount} elementos pendientes...
+        </div>
+      )}
       <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className={`flex flex-1 flex-col overflow-hidden print:overflow-visible print:h-auto print:block ${(!isOnline || (isSyncing && pendingCount > 0)) ? "pt-6 print:pt-0" : ""}`}>
         <Header />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6 bg-muted/30">
+        <main className="flex-1 overflow-y-auto print:overflow-visible print:block p-4 md:p-6 pb-20 md:pb-6 print:p-0 bg-muted/30 print:bg-transparent">
           {children}
         </main>
       </div>
