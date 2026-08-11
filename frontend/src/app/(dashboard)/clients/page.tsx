@@ -162,7 +162,7 @@ export default function ClientsPage() {
       link.click();
       link.remove();
     } catch (err) {
-      addToast("error", "Error al descargar plantilla");
+      showToast("error", "Error al descargar plantilla");
     }
   };
 
