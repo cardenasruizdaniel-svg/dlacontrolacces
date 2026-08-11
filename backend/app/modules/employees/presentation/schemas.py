@@ -90,6 +90,11 @@ class EmployeeUpdateRequest(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def clean_empty_strings(cls, data: dict) -> dict:
+        # photo_url is treated specially: if the field is empty/missing,
+        # we remove it from the dict entirely so it is NOT included in
+        # the update and the existing biometric photo is preserved.
+        if "photo_url" in data and (data["photo_url"] is None or data["photo_url"] == ""):
+            del data["photo_url"]
         return _clean_optional_strings(data)
 
 
