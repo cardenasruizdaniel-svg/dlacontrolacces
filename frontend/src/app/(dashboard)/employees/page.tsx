@@ -624,9 +624,18 @@ export default function EmployeesPage() {
     }
   };
 
-  const handleDownloadEmployeesTemplate = () => {
-    if (typeof window !== "undefined") {
-      window.open("/api/v1/employees/template", "_blank");
+  const handleDownloadEmployeesTemplate = async () => {
+    try {
+      const res = await api.get("/employees/template", { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "plantilla_empleados.csv");
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      showToast("error", "Error al descargar plantilla");
     }
   };
 

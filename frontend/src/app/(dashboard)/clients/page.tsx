@@ -151,9 +151,18 @@ export default function ClientsPage() {
     }
   };
 
-  const handleDownloadClientsTemplate = () => {
-    if (typeof window !== "undefined") {
-      window.open("/api/v1/clients/template", "_blank");
+  const handleDownloadClientsTemplate = async () => {
+    try {
+      const res = await api.get("/clients/template", { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "plantilla_clientes.csv");
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      addToast("error", "Error al descargar plantilla");
     }
   };
 
