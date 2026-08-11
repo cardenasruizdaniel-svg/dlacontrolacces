@@ -3,7 +3,7 @@ import "@/styles/globals.css";
 import ThemeDynamicInjector from "@/components/layout/ThemeDynamicInjector";
 
 export const metadata: Metadata = {
-  title: "DLA Access Enterprise | DLA Redes y Seguridad",
+  title: "DEAControl | DLA Redes y Seguridad",
   description: "ERP Enterprise - Control de Acceso, Geolocalización y Gestión de Personal",
   icons: { icon: "/favicon.ico" },
 };

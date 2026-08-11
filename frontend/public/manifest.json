@@ -1,6 +1,6 @@
 {
-  "name": "DLA Access Enterprise PWA",
-  "short_name": "DLA Access Mobile",
+  "name": "DEAControl PWA",
+  "short_name": "DEAControl",
   "description": "Plataforma Enterprise de Control de Acceso, Asistencia, Nomina y Gestión de Campo por DLA Redes y Seguridad",
   "start_url": "/mobile",
   "display": "standalone",

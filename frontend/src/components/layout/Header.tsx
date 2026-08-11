@@ -22,7 +22,7 @@ export default function Header() {
         </Button>
         <div>
           <p className="text-sm font-medium">Panel de Control</p>
-          <p className="text-xs text-muted-foreground">DLA Access Enterprise</p>
+          <p className="text-xs text-muted-foreground">DEAControl ERP</p>
         </div>
       </div>
       <div className="flex items-center gap-3">

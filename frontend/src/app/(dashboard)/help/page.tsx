@@ -234,7 +234,7 @@ const manualSections: ManualSection[] = [
       "Reportes e Impresión ('/reports'): Seleccione la categoría de reporte (Nómina, Asistencia, Empleados, Bitácora de Geocercas), aplique los filtros de fechas y presione 'Exportar a Excel' o 'Generar PDF'."
     ],
     tips: [
-      "El asistente de IA cuenta con contexto de la legislación laboral colombiana y de la estructura de turnos de DLA Access Enterprise."
+      "El asistente de IA cuenta con contexto de la legislación laboral colombiana y de la estructura de turnos de DEAControl."
     ],
     keywords: ["asistente ia", "inteligencia artificial", "preguntas", "reportes", "excel", "pdf", "asistencia", "bitácora"]
   }
@@ -270,10 +270,10 @@ export default function HelpCenterPage() {
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-8 text-white shadow-xl">
         <div className="relative z-10 max-w-3xl space-y-4">
           <div className="inline-flex items-center gap-2 rounded-full bg-blue-500/20 px-3 py-1 text-xs font-semibold text-blue-300 backdrop-blur-md border border-blue-400/30">
-            <BookOpen className="h-3.5 w-3.5" /> Manual de Funcionamiento & Guía de Usuario
+            <BookOpen className="h-3.5 w-3.5" /> Manual de Funcionamiento DEAControl
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Centro de Ayuda y Manual Operativo DLA Access
+            Centro de Ayuda y Manual Operativo DEAControl
           </h1>
           <p className="text-sm sm:text-base text-blue-100/90 leading-relaxed">
             Consulte la guía completa de procedimientos, normativa laboral colombiana, uso de la App Móvil PWA offline, geolocalización GPS, contratos y configuración de variables del sistema.

@@ -80,7 +80,7 @@ export default function Sidebar() {
           {sidebarOpen && (
             <div className="flex flex-col overflow-hidden">
               <span className="text-xs font-bold leading-tight truncate">{companyName}</span>
-              <span className="text-[10px] text-muted-foreground leading-tight">Access Enterprise</span>
+              <span className="text-[10px] text-muted-foreground leading-tight">DEAControl ERP</span>
             </div>
           )}
         </div>

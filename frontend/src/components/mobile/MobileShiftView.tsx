@@ -736,7 +736,7 @@ export default function MobileShiftView() {
     if (!payrollData?.latest_record) return;
     const rec = payrollData.latest_record;
     const empName = user?.full_name || "Empleado";
-    const text = `📄 *CUENTA DE COBRO - DLA ACCESS ENTERPRISE*\n👤 *Colaborador:* ${empName}\n💰 *Neto a Recibir:* $${Number(rec.net_pay || 0).toLocaleString("es-CO")}\n🗓️ *Período:* ${rec.period_id || "Actual"}\n✅ Firma digital verificada en plataforma.`;
+    const text = `📄 *CUENTA DE COBRO - DEACONTROL*\n👤 *Colaborador:* ${empName}\n💰 *Neto a Recibir:* $${Number(rec.net_pay || 0).toLocaleString("es-CO")}\n🗓️ *Período:* ${rec.period_id || "Actual"}\n✅ Firma digital verificada en plataforma.`;
     const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
     window.open(url, "_blank");
   };
