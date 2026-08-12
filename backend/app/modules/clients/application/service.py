@@ -217,14 +217,69 @@ class ClientService:
         skipped_count = 0
         errors = []
 
-        for idx, data in enumerate(clients_data):
+        type_mapping = {
+            "empresa": "enterprise",
+            "enterprise": "enterprise",
+            "persona natural": "individual",
+            "persona": "individual",
+            "individual": "individual",
+            "ips": "ips",
+            "hospital": "hospital",
+            "clínica": "clinic",
+            "clinica": "clinic",
+            "clinic": "clinic",
+            "proyecto": "project",
+            "project": "project",
+        }
+
+        for idx, raw_data in enumerate(clients_data):
+            # Normalize dictionary keys (support Spanish headers from Excel template)
+            data: dict = {}
+            for k, v in raw_data.items():
+                key_clean = str(k).strip().lower()
+                if "nit" in key_clean or "cédula" in key_clean or "cedula" in key_clean or "identificaci" in key_clean:
+                    data["nit"] = v
+                elif "nombre comercial" in key_clean or "sede" in key_clean or "trade_name" in key_clean:
+                    data["trade_name"] = v
+                elif "razón social" in key_clean or "razon social" in key_clean or "nombre" in key_clean or "name" in key_clean:
+                    if "name" not in data:  # Preserve if specific name found
+                        data["name"] = v
+                elif "tipo" in key_clean or "client_type" in key_clean:
+                    data["client_type"] = v
+                elif "email" in key_clean or "correo" in key_clean:
+                    data["email"] = v
+                elif "celular" in key_clean or "móvil" in key_clean or "movil" in key_clean or "mobile" in key_clean:
+                    data["mobile"] = v
+                elif "teléfono" in key_clean or "telefono" in key_clean or "phone" in key_clean:
+                    data["phone"] = v
+                elif "dirección" in key_clean or "direccion" in key_clean or "address" in key_clean:
+                    data["address"] = v
+                elif "departamento" in key_clean or "depto" in key_clean or "department" in key_clean:
+                    data["department"] = v
+                elif "ciudad" in key_clean or "municipio" in key_clean or "city" in key_clean:
+                    data["city"] = v
+                elif "latitud" in key_clean or "latitude" in key_clean or key_clean == "lat":
+                    data["latitude"] = v
+                elif "longitud" in key_clean or "longitude" in key_clean or key_clean in ("lng", "lon"):
+                    data["longitude"] = v
+                elif "radio" in key_clean or "geofence_radius" in key_clean:
+                    data["geofence_radius"] = v
+                elif "notas" in key_clean or "observaci" in key_clean or "notes" in key_clean:
+                    data["notes"] = v
+                else:
+                    data[k] = v
+
             name = str(data.get("name", "")).strip()
             nit = str(data.get("nit", "")).strip()
 
             if not name:
-                errors.append(f"Fila {idx + 1}: El nombre del cliente es obligatorio")
+                errors.append(f"Fila {idx + 1}: El Nombre / Razón Social del cliente es obligatorio.")
                 skipped_count += 1
                 continue
+
+            # Normalize client type
+            raw_type = str(data.get("client_type", "enterprise")).strip().lower()
+            client_type = type_mapping.get(raw_type, "enterprise")
 
             try:
                 lat = float(data["latitude"]) if data.get("latitude") and str(data["latitude"]).strip() else None
@@ -239,7 +294,7 @@ class ClientService:
                     "name": name,
                     "nit": nit or f"NIT-{idx+1}",
                     "trade_name": str(data.get("trade_name", "")).strip() or name,
-                    "client_type": str(data.get("client_type", "enterprise")).strip(),
+                    "client_type": client_type,
                     "email": str(data.get("email", "")).strip() or None,
                     "phone": str(data.get("phone", "")).strip() or None,
                     "mobile": str(data.get("mobile", "")).strip() or None,
@@ -256,7 +311,7 @@ class ClientService:
                 created_count += 1
             except Exception as e:
                 skipped_count += 1
-                errors.append(f"Fila {idx + 1} ({name}): Error de guardado: {str(e)}")
+                errors.append(f"Fila {idx + 1} ({name}): Error al guardar: {str(e)}")
 
         return {
             "created_count": created_count,

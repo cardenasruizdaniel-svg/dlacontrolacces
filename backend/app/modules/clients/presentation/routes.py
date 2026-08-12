@@ -38,16 +38,30 @@ from openpyxl.utils import get_column_letter
 @router.get("/template")
 async def download_clients_template():
     wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Plantilla Clientes y Sedes"
 
-    # Header columns
-    headers = [
-        "nit", "name", "trade_name", "client_type", "email", "phone", "mobile",
-        "address", "department", "city", "latitude", "longitude", "geofence_radius", "notes"
+    # ── Sheet 1: Data Entry Sheet ─────────────────────────────────────────────
+    ws1 = wb.active
+    ws1.title = "Carga Clientes y Sedes"
+
+    headers_display = [
+        "NIT / Cédula (*)",
+        "Nombre / Razón Social (*)",
+        "Nombre Comercial / Sede",
+        "Tipo de Cliente (*)",
+        "Correo Electrónico",
+        "Teléfono Fijo",
+        "Celular / Móvil",
+        "Dirección",
+        "Departamento (*)",
+        "Ciudad / Municipio (*)",
+        "Latitud GPS",
+        "Longitud GPS",
+        "Radio Geocerca (Metros)",
+        "Observaciones / Notas"
     ]
-    
-    header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid") # Dark Slate / Navy
+
+    header_req_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")  # Dark Slate Blue
+    header_opt_fill = PatternFill(start_color="475569", end_color="475569", fill_type="solid")  # Muted Slate
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
     border_thin = Border(
         left=Side(style='thin', color='CBD5E1'),
@@ -57,32 +71,89 @@ async def download_clients_template():
     )
     center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    ws.append(headers)
-    for cell in ws[1]:
-        cell.fill = header_fill
+    ws1.append(headers_display)
+    for col_idx, cell in enumerate(ws1[1], start=1):
         cell.font = header_font
         cell.alignment = center_align
         cell.border = border_thin
+        # Highlight required columns (*) in dark slate, optional in slate
+        if "(*)" in headers_display[col_idx - 1]:
+            cell.fill = header_req_fill
+        else:
+            cell.fill = header_opt_fill
 
-    # Sample rows for guidance
     sample_rows = [
-        ["900123456-1", "Edificio Torre Central", "Torre Central", "enterprise", "contacto@torrecentral.com", "6015551234", "3109876543", "Calle 100 # 19-61", "Bogotá D.C.", "Bogotá D.C.", 4.6835, -74.0532, 100, "Sede principal controles de acceso"],
-        ["900987654-2", "Centro Médico Salud Total", "Salud Total Norte", "enterprise", "administracion@saludtotal.com", "6067412345", "3007654321", "Carrera 14 # 23-45", "Quindío", "Armenia", 4.5389, -75.6725, 80, "Sede asistencial IPS"],
+        ["901540816-8", "Home Care del Quindío IPS", "Sede Principal Armenia", "IPS", "atencion@homecarequindio.com", "6067412345", "3234790310", "Carrera 14 # 23-45", "Quindío", "Armenia", 4.5389, -75.6725, 100, "Sede principal de atención médica IPS"],
+        ["900123456-1", "Edificio Torre Central", "Torre Operativa Bogotá", "Empresa", "contacto@torrecentral.com", "6015551234", "3109876543", "Calle 100 # 19-61", "Bogotá D.C.", "Bogotá D.C.", 4.6835, -74.0532, 150, "Oficinas corporativas del cliente"],
+        ["890123789-0", "Hospital Universitario San Juan", "Sede Urgencias Norte", "Hospital", "contacto@hospitalsanjuan.gov.co", "6044445566", "3158889900", "Avenida 4 Norte # 12-34", "Valle del Cauca", "Cali", 3.4516, -76.5320, 120, "Centro asistencial hospitalario"],
+        ["901999888-5", "Constructora del Café S.A.S.", "Proyecto Altamira Residencial", "Proyecto", "obras@constructoradelcafe.com", "6067332211", "3124443322", "Km 3 Vía a Montenegro", "Quindío", "Montenegro", 4.5620, -75.7480, 200, "Obra de construcción en desarrollo"],
     ]
 
     for row_data in sample_rows:
-        ws.append(row_data)
-        for cell in ws[ws.max_row]:
+        ws1.append(row_data)
+        for cell in ws1[ws1.max_row]:
             cell.border = border_thin
             cell.alignment = Alignment(vertical="center")
 
-    # Auto-adjust column widths
-    for col in ws.columns:
+    for col in ws1.columns:
         max_len = max(len(str(cell.value or '')) for cell in col)
         col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len + 4, 15)
+        ws1.column_dimensions[col_letter].width = max(max_len + 4, 16)
+    ws1.row_dimensions[1].height = 30
 
-    ws.row_dimensions[1].height = 28
+    # ── Sheet 2: Instructions & Guide Sheet ──────────────────────────────────
+    ws2 = wb.create_sheet(title="Guía e Instrucciones")
+
+    ws2.append(["GUÍA DE CARGA MASIVA DE CLIENTES Y SEDES - DEACONTROL ENTERPRISE"])
+    ws2.append([])
+
+    guide_headers = ["Nombre del Campo", "Obligatorio", "Valores Permitidos / Formato", "Descripción y Ejemplo"]
+    ws2.append(guide_headers)
+
+    g_header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
+    for cell in ws2[3]:
+        cell.fill = g_header_fill
+        cell.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        cell.border = border_thin
+
+    guide_rows = [
+        ["NIT / Cédula (*)", "SÍ", "Texto (ej: 900123456-1)", "Número de documento de identificación del cliente o sede."],
+        ["Nombre / Razón Social (*)", "SÍ", "Texto libre", "Razón social oficial o nombre del cliente. Ej: Home Care del Quindío IPS"],
+        ["Nombre Comercial / Sede", "NO", "Texto libre", "Nombre específico de la sede o nombre comercial. Ej: Sede Principal Armenia"],
+        ["Tipo de Cliente (*)", "SÍ", "Empresa, Persona Natural, IPS, Hospital, Clínica, Proyecto", "Categoría del cliente para clasificación en el sistema."],
+        ["Correo Electrónico", "NO", "Email válido", "Correo de contacto corporativo. Ej: contacto@empresa.com"],
+        ["Teléfono Fijo", "NO", "Números (ej: 6067412345)", "Teléfono de contacto con indicativo de ciudad."],
+        ["Celular / Móvil", "NO", "10 dígitos (ej: 3109876543)", "Número celular de contacto directo."],
+        ["Dirección", "NO", "Texto libre", "Dirección física de la sede o cliente. Ej: Carrera 14 # 23-45"],
+        ["Departamento (*)", "SÍ", "Departamento oficial CO (ej: Quindío)", "Departamento geográfico de ubicación."],
+        ["Ciudad / Municipio (*)", "SÍ", "Municipio oficial CO (ej: Armenia)", "Municipio geográfico de ubicación."],
+        ["Latitud GPS", "NO", "Decimal (ej: 4.5389)", "Coordenada de latitud GPS para control de geocercas en marcado asistido."],
+        ["Longitud GPS", "NO", "Decimal (ej: -75.6725)", "Coordenada de longitud GPS para marcación en app móvil."],
+        ["Radio Geocerca (Metros)", "NO", "Número entero (ej: 100)", "Distancia máxima en metros permitida para marcación. Por defecto 100m."],
+        ["Observaciones / Notas", "NO", "Texto libre", "Notas internas o descripción operativa de la sede."],
+    ]
+
+    for r_data in guide_rows:
+        ws2.append(r_data)
+        row_cells = ws2[ws2.max_row]
+        for idx, cell in enumerate(row_cells):
+            cell.border = border_thin
+            if idx == 1:
+                cell.alignment = Alignment(horizontal="center")
+                if r_data[1] == "SÍ":
+                    cell.font = Font(bold=True, color="DC2626")  # Red for required
+                else:
+                    cell.font = Font(color="64748B")
+            elif idx == 0:
+                cell.font = Font(bold=True)
+
+    for col in ws2.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws2.column_dimensions[col_letter].width = max(max_len + 3, 20)
+
+    ws2.row_dimensions[1].height = 24
+    ws2[1][0].font = Font(size=14, bold=True, color="1E3A8A")
 
     output = io.BytesIO()
     wb.save(output)
