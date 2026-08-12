@@ -48,6 +48,15 @@ class ShiftTemplateRepository:
         result = await self.db.execute(query.offset(skip).limit(limit).order_by(ShiftTemplate.name))
         return list(result.scalars().all()), total
 
+    async def has_any_templates_ever(self, company_id: str) -> bool:
+        """Check if any template (active or soft-deleted) has ever existed for this company."""
+        q = select(func.count(ShiftTemplate.id))
+        if company_id:
+            if company_id != "dla-company-main":
+                q = q.where((ShiftTemplate.company_id == company_id) | (ShiftTemplate.company_id == "dla-company-main"))
+        total = (await self.db.execute(q)).scalar() or 0
+        return total > 0
+
 
 class ScheduleRepository:
     def __init__(self, db: AsyncSession) -> None:

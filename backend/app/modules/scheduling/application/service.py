@@ -150,19 +150,21 @@ class SchedulingService:
         skip = (page - 1) * page_size
         items, total = await self.template_repo.list_by_company(company_id, skip=skip, limit=page_size)
         if not items:
-            default_templates = [
-                {"name": "Turno Mañana", "color": "#3b82f6", "start_time": "07:00", "end_time": "15:00", "duration_hours": 8.0, "shift_type": "morning", "observations": "Turno ordinario diurno"},
-                {"name": "Turno Tarde", "color": "#10b981", "start_time": "15:00", "end_time": "23:00", "duration_hours": 8.0, "shift_type": "afternoon", "observations": "Turno vespertino"},
-                {"name": "Turno Noche", "color": "#8b5cf6", "start_time": "23:00", "end_time": "07:00", "duration_hours": 8.0, "shift_type": "night", "observations": "Turno nocturno recargo Art. 168 CST"},
-                {"name": "Visita Domiciliaria AM", "color": "#06b6d4", "start_time": "08:00", "end_time": "12:00", "duration_hours": 4.0, "shift_type": "home_visit", "observations": "Atención de pacientes domiciliaria mañana"},
-                {"name": "Visita Domiciliaria PM", "color": "#f59e0b", "start_time": "13:00", "end_time": "17:00", "duration_hours": 4.0, "shift_type": "home_visit", "observations": "Atención de pacientes domiciliaria tarde"},
-            ]
-            for dt in default_templates:
-                try:
-                    await self.template_repo.create(company_id=company_id, **dt)
-                except Exception:
-                    pass
-            items, total = await self.template_repo.list_by_company(company_id, skip=skip, limit=page_size)
+            has_ever = await self.template_repo.has_any_templates_ever(company_id)
+            if not has_ever:
+                default_templates = [
+                    {"name": "Turno Mañana", "color": "#3b82f6", "start_time": "07:00", "end_time": "15:00", "duration_hours": 8.0, "shift_type": "morning", "observations": "Turno ordinario diurno"},
+                    {"name": "Turno Tarde", "color": "#10b981", "start_time": "15:00", "end_time": "23:00", "duration_hours": 8.0, "shift_type": "afternoon", "observations": "Turno vespertino"},
+                    {"name": "Turno Noche", "color": "#8b5cf6", "start_time": "23:00", "end_time": "07:00", "duration_hours": 8.0, "shift_type": "night", "observations": "Turno nocturno recargo Art. 168 CST"},
+                    {"name": "Visita Domiciliaria AM", "color": "#06b6d4", "start_time": "08:00", "end_time": "12:00", "duration_hours": 4.0, "shift_type": "home_visit", "observations": "Atención de pacientes domiciliaria mañana"},
+                    {"name": "Visita Domiciliaria PM", "color": "#f59e0b", "start_time": "13:00", "end_time": "17:00", "duration_hours": 4.0, "shift_type": "home_visit", "observations": "Atención de pacientes domiciliaria tarde"},
+                ]
+                for dt in default_templates:
+                    try:
+                        await self.template_repo.create(company_id=company_id, **dt)
+                    except Exception:
+                        pass
+                items, total = await self.template_repo.list_by_company(company_id, skip=skip, limit=page_size)
 
         return {"items": items, "total": total, "page": page, "page_size": page_size,
                 "total_pages": ceil(total / page_size) if total > 0 else 0}
