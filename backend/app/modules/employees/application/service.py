@@ -17,8 +17,19 @@ class EmployeeService:
     async def create_employee(self, **kwargs: dict) -> dict:
         existing = await self.employee_repo.get_by_document(kwargs.get("document_number", ""))
         if existing:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employee with this document already exists")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe un empleado registrado con este número de documento.")
         username = kwargs.pop("username", None)
+        if username and str(username).strip():
+            username = str(username).strip()
+            existing_user = await self.employee_repo.get_by_username(username)
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"El nombre de usuario '{username}' ya se encuentra en uso por otro usuario o empleado. Por favor ingrese uno diferente.",
+                )
+        else:
+            username = None
+
         password = kwargs.pop("password", None)
         role_id = kwargs.pop("role_id", None)
         platform_access = kwargs.pop("platform_access", None)
@@ -162,31 +173,33 @@ class EmployeeService:
                             role_id: str | None = None, platform_access: str = "both") -> dict:
         employee = await self.employee_repo.get_by_id(employee_id)
         if not employee:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empleado no encontrado")
         if employee.username:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employee already has system access")
-        existing_username = await self.employee_repo.get_by_username(username)
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="El empleado ya cuenta con acceso configurado")
+        clean_user = username.strip()
+        existing_username = await self.employee_repo.get_by_username(clean_user)
         if existing_username:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already taken")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"El nombre de usuario '{clean_user}' ya está en uso. Elija uno diferente.")
         hashed = hash_password(password)
         await self.employee_repo.update(employee_id,
-            username=username, hashed_password=hashed, role_id=role_id,
+            username=clean_user, hashed_password=hashed, role_id=role_id,
             platform_access=platform_access or "both", account_status="active",
         )
-        return {"message": "Access created successfully", "username": username}
+        return {"message": "Access created successfully", "username": clean_user}
 
     async def update_access(self, employee_id: str, **kwargs: dict) -> dict:
         employee = await self.employee_repo.get_by_id(employee_id)
         if not employee:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empleado no encontrado")
         if not employee.username:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Employee has no system access")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El empleado no tiene acceso asignado")
         new_username = kwargs.pop("username", None)
-        if new_username and new_username != employee.username:
-            existing = await self.employee_repo.get_by_username(new_username)
-            if existing:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already taken")
-            kwargs["username"] = new_username
+        if new_username and new_username.strip().lower() != (employee.username or "").strip().lower():
+            clean_new = new_username.strip()
+            existing = await self.employee_repo.get_by_username(clean_new)
+            if existing and existing.id != employee_id:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"El nombre de usuario '{clean_new}' ya está en uso por otro empleado.")
+            kwargs["username"] = clean_new
         new_password = kwargs.pop("password", None)
         if new_password:
             kwargs["hashed_password"] = hash_password(new_password)

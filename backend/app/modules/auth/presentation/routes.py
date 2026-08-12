@@ -164,3 +164,13 @@ async def change_password(
         new_password=body.new_password,
         confirm_password=body.confirm_password,
     )
+
+
+@router.get("/check-username")
+async def check_username(
+    username: str = Query(..., min_length=1),
+    exclude_id: str | None = Query(None),
+    db: DbSession = None,
+) -> dict:
+    service = get_auth_service(db)
+    return await service.check_username_availability(username=username, exclude_id=exclude_id)

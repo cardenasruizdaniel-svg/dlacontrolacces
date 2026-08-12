@@ -1,6 +1,4 @@
-from datetime import datetime, timezone
-
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.database.models_auth import AuditLog, User, UserSession
@@ -17,14 +15,20 @@ class UserRepository:
         return result.scalar_one_or_none()
 
     async def get_by_email(self, email: str) -> User | None:
+        if not email:
+            return None
+        clean = email.strip().lower()
         result = await self.db.execute(
-            select(User).where(User.email == email, User.is_deleted == False)
+            select(User).where(func.lower(User.email) == clean, User.is_deleted == False)
         )
         return result.scalar_one_or_none()
 
     async def get_by_username(self, username: str) -> User | None:
+        if not username:
+            return None
+        clean = username.strip().lower()
         result = await self.db.execute(
-            select(User).where(User.username == username, User.is_deleted == False)
+            select(User).where(func.lower(User.username) == clean, User.is_deleted == False)
         )
         return result.scalar_one_or_none()
 

@@ -466,3 +466,49 @@ class AuthService:
 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
 
+    async def check_username_availability(self, username: str, exclude_id: str | None = None) -> dict:
+        from app.shared.database.models_auth import User
+        if not username or len(username.strip()) < 3:
+            return {
+                "available": False,
+                "username": username,
+                "message": "El nombre de usuario debe tener al menos 3 caracteres",
+            }
+        clean = username.strip().lower()
+
+        # Check in employees table
+        emp_query = select(Employee).where(
+            func.lower(Employee.username) == clean,
+            Employee.is_deleted == False,
+        )
+        if exclude_id:
+            emp_query = emp_query.where(Employee.id != exclude_id)
+        emp_res = await self.db.execute(emp_query)
+        if emp_res.scalar_one_or_none():
+            return {
+                "available": False,
+                "username": clean,
+                "message": "El nombre de usuario ya está registrado por otro empleado",
+            }
+
+        # Check in users table
+        user_query = select(User).where(
+            func.lower(User.username) == clean,
+            User.is_deleted == False,
+        )
+        if exclude_id:
+            user_query = user_query.where(User.id != exclude_id, User.employee_id != exclude_id)
+        user_res = await self.db.execute(user_query)
+        if user_res.scalar_one_or_none():
+            return {
+                "available": False,
+                "username": clean,
+                "message": "El nombre de usuario ya está registrado en el sistema",
+            }
+
+        return {
+            "available": True,
+            "username": clean,
+            "message": "Nombre de usuario disponible",
+        }
+

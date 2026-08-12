@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Plus, Search, Pencil, Trash2, Eye, AlertCircle, CheckCircle2, Download, Upload, FileText, FileSpreadsheet } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Eye, AlertCircle, CheckCircle2, Download, Upload, FileText, FileSpreadsheet, Loader2 } from "lucide-react";
 import * as XLSX from "xlsx";
 
 // Complete official dataset of Colombian Departments and All Municipalities
@@ -247,6 +247,42 @@ function EmployeeForm({
   data: any; onChange: (d: any) => void; roles?: any[]; catalogs?: any; editing?: any;
 }) {
   const set = (k: string, v: any) => onChange({ ...data, [k]: v });
+
+  const [usernameStatus, setUsernameStatus] = useState<{
+    checking: boolean;
+    available?: boolean;
+    message?: string;
+  }>({ checking: false });
+
+  useEffect(() => {
+    const rawUsername = data.username ? String(data.username).trim() : "";
+    if (!rawUsername || rawUsername.length < 3) {
+      setUsernameStatus({ checking: false });
+      return;
+    }
+
+    if (editing && editing.username && rawUsername.toLowerCase() === String(editing.username).trim().toLowerCase()) {
+      setUsernameStatus({ checking: false, available: true, message: "Nombre de usuario actual" });
+      return;
+    }
+
+    setUsernameStatus({ checking: true });
+    const timer = setTimeout(async () => {
+      try {
+        const excludeParam = editing?.id ? `&exclude_id=${editing.id}` : "";
+        const res = await api.get(`/auth/check-username?username=${encodeURIComponent(rawUsername)}${excludeParam}`);
+        setUsernameStatus({
+          checking: false,
+          available: res.data.available,
+          message: res.data.message,
+        });
+      } catch {
+        setUsernameStatus({ checking: false });
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [data.username, editing]);
 
   // Full name calculation
   const fullName = [data.first_name, data.middle_name, data.last_name, data.second_last_name]
@@ -515,12 +551,44 @@ function EmployeeForm({
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Usuario {!editing && <span className="text-red-500">*</span>}</label>
-            <Input
-              placeholder="nombre.usuario"
-              value={data.username || ""}
-              onChange={(e) => set("username", e.target.value)}
-              className="h-9 text-sm"
-            />
+            <div className="relative">
+              <Input
+                placeholder="nombre.usuario"
+                value={data.username || ""}
+                onChange={(e) => set("username", e.target.value)}
+                className={`h-9 text-sm pr-8 ${
+                  usernameStatus.available === true
+                    ? "border-emerald-500 focus-visible:ring-emerald-500"
+                    : usernameStatus.available === false
+                    ? "border-red-500 focus-visible:ring-red-500"
+                    : ""
+                }`}
+              />
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                {usernameStatus.checking && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+                {!usernameStatus.checking && usernameStatus.available === true && (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                )}
+                {!usernameStatus.checking && usernameStatus.available === false && (
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                )}
+              </div>
+            </div>
+            {data.username && String(data.username).trim().length >= 3 && (
+              <p
+                className={`text-[11px] mt-1 font-medium ${
+                  usernameStatus.checking
+                    ? "text-slate-400"
+                    : usernameStatus.available === true
+                    ? "text-emerald-600"
+                    : "text-red-600"
+                }`}
+              >
+                {usernameStatus.checking
+                  ? "Verificando disponibilidad..."
+                  : usernameStatus.message || (usernameStatus.available ? "Usuario disponible" : "Usuario no disponible")}
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -871,6 +939,20 @@ export default function EmployeesPage() {
 
     setSaving(true);
     setError("");
+
+    // Validate username uniqueness if specified
+    if (formData.username && String(formData.username).trim().length >= 3) {
+      const cleanUser = String(formData.username).trim();
+      try {
+        const excludeParam = editMode && editId ? `&exclude_id=${editId}` : "";
+        const checkRes = await api.get(`/auth/check-username?username=${encodeURIComponent(cleanUser)}${excludeParam}`);
+        if (checkRes.data.available === false) {
+          setError(checkRes.data.message || `El usuario '${cleanUser}' ya está en uso. Por favor elija otro.`);
+          setSaving(false);
+          return;
+        }
+      } catch {}
+    }
 
     // Clean role_id: ignore synthetic fallback role IDs
     const targetRoleId = formData.role_id && !formData.role_id.startsWith("fallback-") ? formData.role_id : null;

@@ -27,8 +27,11 @@ class EmployeeRepository:
         return result.scalar_one_or_none()
 
     async def get_by_username(self, username: str) -> Employee | None:
+        if not username:
+            return None
+        clean = username.strip().lower()
         result = await self.db.execute(
-            select(Employee).where(Employee.username == username, Employee.is_deleted == False)
+            select(Employee).where(func.lower(Employee.username) == clean, Employee.is_deleted == False)
         )
         return result.scalar_one_or_none()
 

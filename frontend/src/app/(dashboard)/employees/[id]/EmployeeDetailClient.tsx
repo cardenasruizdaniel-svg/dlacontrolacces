@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Save, Loader2, User, Briefcase, FileText, Camera,
-  Shield, Key, Smartphone, ClipboardList, Upload
+  Shield, Key, Smartphone, ClipboardList, Upload, CheckCircle2, AlertCircle
 } from "lucide-react";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,34 @@ export default function EmployeeDetailClient() {
   const [creatingAccess, setCreatingAccess] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newPasswordInit, setNewPasswordInit] = useState("");
+  const [createAccessError, setCreateAccessError] = useState("");
+  const [usernameStatus, setUsernameStatus] = useState<{
+    checking: boolean;
+    available?: boolean;
+    message?: string;
+  }>({ checking: false });
+
+  useEffect(() => {
+    const raw = newUsername.trim();
+    if (!raw || raw.length < 3) {
+      setUsernameStatus({ checking: false });
+      return;
+    }
+    setUsernameStatus({ checking: true });
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get(`/auth/check-username?username=${encodeURIComponent(raw)}&exclude_id=${empId}`);
+        setUsernameStatus({
+          checking: false,
+          available: res.data.available,
+          message: res.data.message,
+        });
+      } catch {
+        setUsernameStatus({ checking: false });
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [newUsername, empId]);
 
   const loadData = useCallback(async () => {
     if (!empId) return;
@@ -123,15 +151,21 @@ export default function EmployeeDetailClient() {
 
   const createAccess = async () => {
     if (!newUsername || !newPasswordInit) return;
+    if (usernameStatus.available === false) {
+      setCreateAccessError(usernameStatus.message || "El nombre de usuario ya está en uso");
+      return;
+    }
     setCreatingAccess(true);
+    setCreateAccessError("");
     try {
       await api.post(`/employees/${empId}/access`, {
-        username: newUsername, password: newPasswordInit,
+        username: newUsername.trim(), password: newPasswordInit,
         platform_access: "both",
       });
       await loadData();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Create access error:", err);
+      setCreateAccessError(err?.response?.data?.detail || "Error al crear cuenta de acceso");
     } finally {
       setCreatingAccess(false);
     }
@@ -376,11 +410,68 @@ export default function EmployeeDetailClient() {
                 </>
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-gray-500 mb-4">Este empleado no tiene cuenta de usuario</p>
-                  <div className="flex gap-2 justify-center max-w-md mx-auto">
-                    <Input placeholder="Username" value={newUsername} onChange={e => setNewUsername(e.target.value)} />
-                    <Input type="password" placeholder="Contrasena temporal" value={newPasswordInit} onChange={e => setNewPasswordInit(e.target.value)} />
-                    <Button onClick={createAccess} disabled={creatingAccess || !newUsername || !newPasswordInit}>
+                  <p className="text-gray-500 mb-4">Este empleado no tiene cuenta de usuario asignada</p>
+                  <div className="max-w-md mx-auto space-y-3">
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Input
+                          placeholder="Nombre de usuario"
+                          value={newUsername}
+                          onChange={e => setNewUsername(e.target.value)}
+                          className={`pr-8 ${
+                            usernameStatus.available === true
+                              ? "border-emerald-500"
+                              : usernameStatus.available === false
+                              ? "border-red-500"
+                              : ""
+                          }`}
+                        />
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                          {usernameStatus.checking && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+                          {!usernameStatus.checking && usernameStatus.available === true && (
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                          )}
+                          {!usernameStatus.checking && usernameStatus.available === false && (
+                            <AlertCircle className="h-4 w-4 text-red-600" />
+                          )}
+                        </div>
+                      </div>
+                      <Input
+                        type="password"
+                        placeholder="Contraseña inicial"
+                        value={newPasswordInit}
+                        onChange={e => setNewPasswordInit(e.target.value)}
+                        className="flex-1"
+                      />
+                    </div>
+
+                    {newUsername.trim().length >= 3 && (
+                      <p
+                        className={`text-xs text-left font-medium ${
+                          usernameStatus.checking
+                            ? "text-slate-400"
+                            : usernameStatus.available === true
+                            ? "text-emerald-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {usernameStatus.checking
+                          ? "Verificando disponibilidad de usuario..."
+                          : usernameStatus.message || (usernameStatus.available ? "Usuario disponible" : "Usuario no disponible")}
+                      </p>
+                    )}
+
+                    {createAccessError && (
+                      <p className="text-xs text-red-600 text-left font-medium bg-red-50 p-2 rounded border border-red-200">
+                        {createAccessError}
+                      </p>
+                    )}
+
+                    <Button
+                      onClick={createAccess}
+                      disabled={creatingAccess || !newUsername || !newPasswordInit || usernameStatus.available === false}
+                      className="w-full"
+                    >
                       {creatingAccess ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Key className="h-4 w-4 mr-2" />}Crear Cuenta
                     </Button>
                   </div>
