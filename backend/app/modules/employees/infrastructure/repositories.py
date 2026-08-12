@@ -69,21 +69,35 @@ class EmployeeRepository:
         if status:
             query = query.where(Employee.status == status)
             count_query = count_query.where(Employee.status == status)
-        if search:
-            search_filter = (
-                Employee.first_name.ilike(f"%{search}%")
-                | Employee.last_name.ilike(f"%{search}%")
-                | Employee.document_number.ilike(f"%{search}%")
-                | Employee.code.ilike(f"%{search}%")
-                | Employee.email.ilike(f"%{search}%")
-            )
-            query = query.where(search_filter)
-            count_query = count_query.where(search_filter)
+        if search and search.strip():
+            clean_search = search.strip()
+            terms = clean_search.split()
+            for term in terms:
+                search_filter = (
+                    Employee.first_name.ilike(f"%{term}%")
+                    | Employee.last_name.ilike(f"%{term}%")
+                    | Employee.middle_name.ilike(f"%{term}%")
+                    | Employee.second_last_name.ilike(f"%{term}%")
+                    | Employee.document_number.ilike(f"%{term}%")
+                    | Employee.code.ilike(f"%{term}%")
+                    | Employee.email.ilike(f"%{term}%")
+                    | Employee.phone.ilike(f"%{term}%")
+                    | Employee.mobile.ilike(f"%{term}%")
+                    | Employee.job_position.ilike(f"%{term}%")
+                    | Employee.username.ilike(f"%{term}%")
+                    | Employee.city.ilike(f"%{term}%")
+                    | Employee.address.ilike(f"%{term}%")
+                )
+                query = query.where(search_filter)
+                count_query = count_query.where(search_filter)
 
         total_result = await self.db.execute(count_query)
         total = total_result.scalar() or 0
 
-        query = query.offset(skip).limit(limit).order_by(Employee.created_at.desc())
+        query = query.order_by(
+            func.lower(Employee.first_name).asc(),
+            func.lower(Employee.last_name).asc()
+        ).offset(skip).limit(limit)
         result = await self.db.execute(query)
         return list(result.scalars().all()), total
 

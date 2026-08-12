@@ -81,7 +81,6 @@ export default function ClientsPage() {
   const router = useRouter();
   const [clients, setClients] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
-  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [editingClient, setEditingClient] = useState<any | null>(null);
@@ -223,17 +222,37 @@ export default function ClientsPage() {
     }
   };
 
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [search]);
+
   const loadClients = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/clients`, { params: { company_id: companyId, search, page_size: 100 } });
-      setClients(res.data.items || []);
-      setTotal(res.data.total || 0);
+      const res = await api.get(`/clients`, { 
+        params: { 
+          company_id: companyId, 
+          search: debouncedSearch.trim() || undefined, 
+          page_size: 100 
+        } 
+      });
+      const items = res.data.items || [];
+      const sorted = items.sort((a: any, b: any) => 
+        (a.name || "").localeCompare(b.name || "", "es", { sensitivity: "base" })
+      );
+      setClients(sorted);
+      setTotal(res.data.total || sorted.length);
     } catch {
       setClients([]);
     }
     setLoading(false);
-  }, [companyId, search]);
+  }, [companyId, debouncedSearch]);
 
   useEffect(() => { loadClients(); }, [loadClients]);
 
@@ -436,11 +455,27 @@ export default function ClientsPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar por nombre, NIT, ciudad..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input 
+            placeholder="Buscar cliente por nombre, NIT, ciudad, dirección..." 
+            className="pl-9 pr-8 h-9 text-sm rounded-xl" 
+            value={search} 
+            onChange={(e) => setSearch(e.target.value)} 
+          />
+          {search && (
+            <button 
+              type="button"
+              onClick={() => setSearch("")} 
+              className="absolute right-2.5 top-2.5 text-xs text-muted-foreground hover:text-foreground font-bold p-0.5"
+              title="Limpiar búsqueda"
+            >
+              ✕
+            </button>
+          )}
         </div>
+        {loading && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

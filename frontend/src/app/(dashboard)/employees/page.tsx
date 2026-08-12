@@ -639,6 +639,15 @@ export default function EmployeesPage() {
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, terminated: 0 });
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [search]);
+
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -817,14 +826,26 @@ export default function EmployeesPage() {
   const loadEmployees = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/employees`, { params: { company_id: companyId, search, page_size: 100 } });
-      setEmployees(res.data.items || []);
-      setTotal(res.data.total || 0);
+      const res = await api.get(`/employees`, { 
+        params: { 
+          company_id: companyId, 
+          search: debouncedSearch.trim() || undefined, 
+          page_size: 100 
+        } 
+      });
+      const items = res.data.items || [];
+      const sorted = items.sort((a: any, b: any) => {
+        const nameA = `${a.first_name || ""} ${a.last_name || ""}`.trim();
+        const nameB = `${b.first_name || ""} ${b.last_name || ""}`.trim();
+        return nameA.localeCompare(nameB, "es", { sensitivity: "base" });
+      });
+      setEmployees(sorted);
+      setTotal(res.data.total || sorted.length);
     } catch {
       setEmployees([]);
     }
     setLoading(false);
-  }, [companyId, search]);
+  }, [companyId, debouncedSearch]);
 
   const loadStats = useCallback(async () => {
     try {
@@ -1085,11 +1106,27 @@ export default function EmployeesPage() {
         ))}
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar por nombre, documento, código..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input 
+            placeholder="Buscar empleado por nombre, cédula, código, cargo, correo..." 
+            className="pl-9 pr-8 h-9 text-sm rounded-xl" 
+            value={search} 
+            onChange={(e) => setSearch(e.target.value)} 
+          />
+          {search && (
+            <button 
+              type="button"
+              onClick={() => setSearch("")} 
+              className="absolute right-2.5 top-2.5 text-xs text-muted-foreground hover:text-foreground font-bold p-0.5"
+              title="Limpiar búsqueda"
+            >
+              ✕
+            </button>
+          )}
         </div>
+        {loading && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
       </div>
 
       <Card>

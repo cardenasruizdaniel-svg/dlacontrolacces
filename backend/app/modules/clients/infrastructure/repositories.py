@@ -56,12 +56,28 @@ class ClientRepository:
         if status:
             query = query.where(Client.status == status)
             count_q = count_q.where(Client.status == status)
-        if search:
-            f = Client.name.ilike(f"%{search}%") | Client.nit.ilike(f"%{search}%")
-            query = query.where(f)
-            count_q = count_q.where(f)
+        if search and search.strip():
+            clean_search = search.strip()
+            terms = clean_search.split()
+            for term in terms:
+                f = (
+                    Client.name.ilike(f"%{term}%")
+                    | Client.trade_name.ilike(f"%{term}%")
+                    | Client.nit.ilike(f"%{term}%")
+                    | Client.email.ilike(f"%{term}%")
+                    | Client.phone.ilike(f"%{term}%")
+                    | Client.mobile.ilike(f"%{term}%")
+                    | Client.city.ilike(f"%{term}%")
+                    | Client.department.ilike(f"%{term}%")
+                    | Client.address.ilike(f"%{term}%")
+                    | Client.notes.ilike(f"%{term}%")
+                )
+                query = query.where(f)
+                count_q = count_q.where(f)
+
         total = (await self.db.execute(count_q)).scalar() or 0
-        result = await self.db.execute(query.offset(skip).limit(limit).order_by(Client.created_at.desc()))
+        query = query.order_by(func.lower(Client.name).asc()).offset(skip).limit(limit)
+        result = await self.db.execute(query)
         return list(result.scalars().all()), total
 
     async def count_by_company(self, company_id: str) -> int:
