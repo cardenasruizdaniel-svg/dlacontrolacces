@@ -167,6 +167,16 @@ export default function SettingsPage() {
     try {
       await api.post("/system-config/wipe", { modules: modulesToWipe });
       showToast("success", "Datos borrados exitosamente. Reiniciando vista...");
+      
+      // Clear offline queues, system configs and cached data from browser memory
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("system_configs");
+          localStorage.removeItem("dla_offline_cache");
+          indexedDB.deleteDatabase("DLA_SyncDB");
+        } catch {}
+      }
+
       setWipeDialogOpen(false);
       setWipeConfirmText("");
       setWipeModules({
