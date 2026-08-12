@@ -1,7 +1,12 @@
 import axios from "axios";
 
 // Use env var in production, fallback to localhost for local dev
-const finalApiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8005/api/v1";
+// Use env var in production, fallback to Render backend if on vercel, otherwise localhost
+let defaultBase = "http://127.0.0.1:8005/api/v1";
+if (typeof window !== "undefined" && window.location.hostname.includes("vercel.app")) {
+  defaultBase = "https://dla-access-backend.onrender.com/api/v1";
+}
+const finalApiUrl = process.env.NEXT_PUBLIC_API_URL || defaultBase;
 
 const api = axios.create({
   baseURL: finalApiUrl,
@@ -21,6 +26,7 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     const isAuthRoute = originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/refresh');
+    const isWipeRoute = originalRequest.url?.includes('/system-config/wipe');
     
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthRoute) {
       originalRequest._retry = true;
@@ -41,12 +47,13 @@ api.interceptors.response.use(
       }
     }
 
-    // Intercept Offline/Network Errors for Mutations
+    // Intercept Offline/Network Errors for Mutations (except Auth and System Wipe)
     if (
       (!error.response || error.code === "ERR_NETWORK" || error.code === "ECONNABORTED") &&
       originalRequest.method &&
       ["post", "put", "delete", "patch"].includes(originalRequest.method.toLowerCase()) &&
-      !isAuthRoute
+      !isAuthRoute &&
+      !isWipeRoute
     ) {
       // Dynamic import to avoid SSR issues with IndexedDB
       const { addOfflineMutation } = await import("./offlineQueue");

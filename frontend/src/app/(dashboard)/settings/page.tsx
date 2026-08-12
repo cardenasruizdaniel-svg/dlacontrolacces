@@ -50,7 +50,13 @@ export default function SettingsPage() {
       configs.forEach((c) => {
         map[c.key] = c.value || "";
       });
-      setLocalConfigs(map);
+      setLocalConfigs((prev) => {
+        const keysMap = Object.keys(map);
+        const keysPrev = Object.keys(prev);
+        if (keysMap.length !== keysPrev.length) return map;
+        const hasChanged = keysMap.some((k) => map[k] !== prev[k]);
+        return hasChanged ? map : prev;
+      });
     }
   }, [configs]);
 

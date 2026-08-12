@@ -19,7 +19,7 @@ function getCachedConfigs(): ConfigItem[] {
 
 export const useSystemConfig = () => {
   // Initialize immediately from cache so Sidebar renders correctly on first frame
-  const [configs, setConfigs] = useState<ConfigItem[]>(getCachedConfigs());
+  const [configs, setConfigs] = useState<ConfigItem[]>(() => getCachedConfigs());
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
