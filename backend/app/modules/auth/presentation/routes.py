@@ -8,6 +8,8 @@ from app.modules.auth.infrastructure.repositories import (
     UserRepository,
 )
 from app.modules.auth.presentation.schemas import (
+    ChangePasswordRequest,
+    FirstLoginPasswordRequest,
     LoginRequest,
     MFAEnableResponse,
     MFAVerifyRequest,
@@ -132,4 +134,33 @@ async def get_me(current_user: CurrentUser) -> UserResponse:
         role={"name": role_name} if role_name else None,
         role_name=role_name,
         platform_access=platform_access,
+    )
+
+
+@router.post("/first-login-password")
+async def change_first_login_password(
+    body: FirstLoginPasswordRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> dict:
+    service = get_auth_service(db)
+    return await service.change_first_login_password(
+        user_id=current_user.id,
+        new_password=body.new_password,
+        confirm_password=body.confirm_password,
+    )
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> dict:
+    service = get_auth_service(db)
+    return await service.change_password(
+        user_id=current_user.id,
+        current_password=body.current_password,
+        new_password=body.new_password,
+        confirm_password=body.confirm_password,
     )

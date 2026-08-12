@@ -16,6 +16,8 @@ export interface User {
   account_status?: string;
   employee_id?: string | null;
   code?: string | null;
+  first_login?: boolean;
+  force_password_change?: boolean;
 }
 
 export interface Employee {

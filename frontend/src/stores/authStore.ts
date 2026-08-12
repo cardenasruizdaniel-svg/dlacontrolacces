@@ -6,9 +6,10 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, platform?: string) => Promise<void>;
+  login: (email: string, password: string, platform?: string) => Promise<User>;
   logout: () => Promise<void>;
   loadUser: () => Promise<void>;
+  updateUser: (updatedUser: Partial<User>) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -19,12 +20,23 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (email: string, password: string, platform?: string) => {
     const queryParam = platform ? `?platform=${encodeURIComponent(platform)}` : "?platform=auto";
     const res = await api.post(`/auth/login${queryParam}`, { email, password });
-    const { access_token, refresh_token, user } = res.data;
+    const { access_token, refresh_token, user, first_login, force_password_change } = res.data;
     localStorage.setItem("access_token", access_token);
     localStorage.setItem("refresh_token", refresh_token);
     if (user?.company_id) localStorage.setItem("company_id", user.company_id);
-    set({ user, isAuthenticated: true });
-    return user;
+    const userWithFlags = {
+      ...user,
+      first_login: first_login !== undefined ? first_login : !user?.first_login_completed,
+      force_password_change: force_password_change ?? user?.force_password_change ?? false,
+    };
+    set({ user: userWithFlags, isAuthenticated: true });
+    return userWithFlags;
+  },
+
+  updateUser: (updatedUser: Partial<User>) => {
+    set((state) => ({
+      user: state.user ? { ...state.user, ...updatedUser } : null,
+    }));
   },
 
   logout: async () => {

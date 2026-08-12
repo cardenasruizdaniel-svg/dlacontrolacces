@@ -6,8 +6,7 @@ import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Shield, Smartphone, ShieldCheck, Lock, Building2, Mail, Sparkles, ArrowRight, Activity, CheckCircle2, AlertCircle } from "lucide-react";
-import { Eye, EyeOff, User } from "lucide-react";
+import { Shield, Smartphone, ShieldCheck, Lock, Building2, Mail, Sparkles, ArrowRight, Activity, CheckCircle2, AlertCircle, KeyRound, Eye, EyeOff, User } from "lucide-react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 
@@ -141,6 +140,97 @@ function LoginContent() {
     }
   };
 
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordChangeError, setPasswordChangeError] = useState("");
+
+  const hasMinLength = newPassword.length >= 8;
+  const hasUppercase = /[A-Z]/.test(newPassword);
+  const hasLowercase = /[a-z]/.test(newPassword);
+  const hasNumber = /[0-9]/.test(newPassword);
+  const hasSpecial = /[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\/`~;]/.test(newPassword);
+  const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
+
+  const validCount = [hasMinLength, hasUppercase, hasLowercase, hasNumber, hasSpecial].filter(Boolean).length;
+  const isFormValid = validCount === 5 && passwordsMatch;
+
+  const proceedAfterAuth = (user: any) => {
+    const platformAccess = user?.platform_access || "both";
+    const emailLower = String(user?.email || "").toLowerCase();
+    const isSuperUser = user?.is_superuser || emailLower === "admin@dlaredes.com.co" || false;
+    const role = String(user?.role_id || user?.role_name || "").toLowerCase();
+    
+    const hasPhoto = !!user?.photo_url || !!user?.is_face_registered;
+    const isAdminOrBoth = isSuperUser || role.includes("admin") || role.includes("super") || platformAccess === "both";
+
+    if (!hasPhoto && !isAdminOrBoth) {
+      setShowFaceSetup(true);
+      setLoading(false);
+      return;
+    }
+
+    if (platformAccess === "mobile") {
+      router.push("/mobile");
+      return;
+    }
+
+    if (platformAccess === "web") {
+      router.push("/dashboard");
+      return;
+    }
+
+    if (platformAccess === "both" || role.includes("admin") || isSuperUser || role.includes("super")) {
+      setShowAppSelector(true);
+      setLoading(false);
+      return;
+    }
+
+    if (
+      redirectParam &&
+      redirectParam !== "/attendance" &&
+      redirectParam !== "%2Fattendance" &&
+      !redirectParam.includes("attendance") &&
+      redirectParam !== "/mobile" &&
+      redirectParam !== "%2Fmobile"
+    ) {
+      router.push(redirectParam);
+      return;
+    }
+
+    router.push("/dashboard");
+  };
+
+  const handleSaveFirstLoginPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isFormValid) return;
+    setChangingPassword(true);
+    setPasswordChangeError("");
+
+    try {
+      await api.post("/auth/first-login-password", {
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      });
+
+      const { updateUser } = useAuthStore.getState();
+      updateUser({ first_login: false, force_password_change: false });
+      
+      const currentUser = useAuthStore.getState().user;
+      setShowPasswordChange(false);
+      setChangingPassword(false);
+      
+      proceedAfterAuth(currentUser);
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || "Error al actualizar contraseña.";
+      setPasswordChangeError(msg);
+      setChangingPassword(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -156,58 +246,17 @@ function LoginContent() {
       }
 
       const loggedUser = await login(email, password, targetPlatform);
+      const emailLower = email.trim().toLowerCase();
+      const isSuperUser = (loggedUser as any)?.is_superuser || emailLower === "admin@dlaredes.com.co" || false;
 
-      
-      const platformAccess = (loggedUser as any)?.platform_access || "both";
-      const formEmailLower = email.trim().toLowerCase();
-      const isSuperUser = (loggedUser as any)?.is_superuser || formEmailLower === "admin@dlaredes.com.co" || false;
-      const role = String((loggedUser as any)?.role_id || (loggedUser as any)?.role_name || "").toLowerCase();
-      
-      const hasPhoto = !!(loggedUser as any)?.photo_url || !!(loggedUser as any)?.is_face_registered;
-      const isAdminOrBoth = isSuperUser || role.includes("admin") || role.includes("super") || platformAccess === "both";
-      
-      if (!hasPhoto && !isAdminOrBoth) {
-        setShowFaceSetup(true);
+      // Force Password Change on first login (for non-superuser default accounts)
+      if (((loggedUser as any)?.first_login || (loggedUser as any)?.force_password_change) && !isSuperUser) {
+        setShowPasswordChange(true);
         setLoading(false);
         return;
       }
 
-
-      // Strict check for mobile platform users (must happen before App Selector)
-      if (platformAccess === "mobile") {
-        router.push("/mobile");
-        return;
-      }
-
-      // Strict check for web-only users
-      if (platformAccess === "web") {
-        router.push("/dashboard");
-        return;
-      }
-
-      // If user has both, show selector
-      if (platformAccess === "both" || role.includes("admin") || isSuperUser || role.includes("super")) {
-        setShowAppSelector(true);
-        setLoading(false);
-        return;
-      }
-
-
-
-      if (
-        redirectParam &&
-        redirectParam !== "/attendance" &&
-        redirectParam !== "%2Fattendance" &&
-        !redirectParam.includes("attendance") &&
-        redirectParam !== "/mobile" &&
-        redirectParam !== "%2Fmobile"
-      ) {
-        router.push(redirectParam);
-        return;
-      }
-
-      // Operational Employees (already handled by strict check, fallback to dashboard for others)
-      router.push("/dashboard");
+      proceedAfterAuth(loggedUser);
     } catch (err) {
       const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
       const msg = axiosErr?.response?.data?.detail || axiosErr?.message || "Credenciales inválidas";
@@ -217,6 +266,151 @@ function LoginContent() {
   };
 
   
+    if (showPasswordChange) {
+      return (
+        <div className="relative min-h-screen w-full flex items-center justify-center p-4 bg-background">
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute -top-32 -left-32 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl animate-pulse" />
+            <div className="absolute top-1/2 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse delay-1000" />
+          </div>
+
+          <Card className="relative w-full max-w-lg shadow-ios border-border/80 bg-card/95 text-card-foreground backdrop-blur-xl animate-in fade-in zoom-in-95 duration-500">
+            <CardHeader className="text-center pb-2 border-b border-border/80 relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-primary to-emerald-500 animate-pulse" />
+              
+              <div className="mx-auto bg-amber-500/10 border border-amber-500/30 p-3.5 rounded-2xl mb-2 w-fit">
+                <KeyRound className="h-8 w-8 text-amber-500" />
+              </div>
+              <CardTitle className="text-xl font-black tracking-tight text-foreground">
+                Actualización Obligatoria de Contraseña
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
+                Por motivos de seguridad en tu primer ingreso, debes crear una contraseña propia y segura para activar tu cuenta.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-4 pt-4">
+              <form onSubmit={handleSaveFirstLoginPassword} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Nueva Contraseña</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type={showNewPassword ? "text" : "password"}
+                      placeholder="Escribe tu nueva contraseña segura"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="pl-9 pr-10 bg-background/50 border-input text-xs"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                    >
+                      {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Confirmar Nueva Contraseña</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Repite la nueva contraseña"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="pl-9 pr-10 bg-background/50 border-input text-xs"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Strength meter bar */}
+                <div className="space-y-1 pt-1">
+                  <div className="flex justify-between text-[11px] font-medium">
+                    <span className="text-muted-foreground">Nivel de seguridad:</span>
+                    <span className={
+                      validCount <= 2 ? "text-red-500 font-bold" :
+                      validCount <= 4 ? "text-amber-500 font-bold" :
+                      "text-emerald-500 font-bold"
+                    }>
+                      {newPassword.length === 0 ? "Sin iniciar" : validCount <= 2 ? "Débil" : validCount <= 4 ? "Aceptable" : "Excelente y Segura"}
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-300 ${
+                        newPassword.length === 0 ? "w-0" :
+                        validCount <= 2 ? "bg-red-500 w-1/3" :
+                        validCount <= 4 ? "bg-amber-500 w-2/3" :
+                        "bg-emerald-500 w-full"
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Requirement Checklist */}
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-border/80 space-y-1.5 text-[11px]">
+                  <p className="font-bold text-slate-700 dark:text-slate-300 mb-1">Requisitos de seguridad:</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    <div className={`flex items-center gap-1.5 ${hasMinLength ? "text-emerald-600 font-semibold" : "text-muted-foreground"}`}>
+                      <CheckCircle2 className={`h-3.5 w-3.5 ${hasMinLength ? "text-emerald-600" : "text-slate-300 dark:text-slate-600"}`} />
+                      <span>Mínimo 8 caracteres</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${hasUppercase ? "text-emerald-600 font-semibold" : "text-muted-foreground"}`}>
+                      <CheckCircle2 className={`h-3.5 w-3.5 ${hasUppercase ? "text-emerald-600" : "text-slate-300 dark:text-slate-600"}`} />
+                      <span>Letra mayúscula (A-Z)</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${hasLowercase ? "text-emerald-600 font-semibold" : "text-muted-foreground"}`}>
+                      <CheckCircle2 className={`h-3.5 w-3.5 ${hasLowercase ? "text-emerald-600" : "text-slate-300 dark:text-slate-600"}`} />
+                      <span>Letra minúscula (a-z)</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${hasNumber ? "text-emerald-600 font-semibold" : "text-muted-foreground"}`}>
+                      <CheckCircle2 className={`h-3.5 w-3.5 ${hasNumber ? "text-emerald-600" : "text-slate-300 dark:text-slate-600"}`} />
+                      <span>Al menos un número (0-9)</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${hasSpecial ? "text-emerald-600 font-semibold" : "text-muted-foreground"}`}>
+                      <CheckCircle2 className={`h-3.5 w-3.5 ${hasSpecial ? "text-emerald-600" : "text-slate-300 dark:text-slate-600"}`} />
+                      <span>Carácter especial (!@#$...)</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${passwordsMatch ? "text-emerald-600 font-semibold" : "text-muted-foreground"}`}>
+                      <CheckCircle2 className={`h-3.5 w-3.5 ${passwordsMatch ? "text-emerald-600" : "text-slate-300 dark:text-slate-600"}`} />
+                      <span>Coinciden ambas claves</span>
+                    </div>
+                  </div>
+                </div>
+
+                {passwordChangeError && (
+                  <div className="p-2.5 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive flex items-start gap-2 text-xs">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{passwordChangeError}</span>
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  disabled={!isFormValid || changingPassword}
+                  className="w-full py-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 text-white font-bold text-sm shadow-lg rounded-xl transition-all"
+                >
+                  {changingPassword ? "Actualizando Contraseña..." : "Guardar Contraseña y Continuar"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
     if (showFaceSetup) {
       return (
         <FaceScanOverlay 

@@ -58,3 +58,14 @@ class UserListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+
+class FirstLoginPasswordRequest(BaseModel):
+    new_password: str
+    confirm_password: str
