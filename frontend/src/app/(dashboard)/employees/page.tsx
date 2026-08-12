@@ -633,19 +633,39 @@ export default function EmployeesPage() {
             const clean: any = {};
             for (const [key, val] of Object.entries(row)) {
               const k = key.trim().toLowerCase();
-              if (k.includes("code") || k.includes("código") || k.includes("codigo")) clean["code"] = String(val).trim();
+              if (k === "middle_name" || k.includes("segundo nombre") || k.includes("segundo_nombre")) clean["middle_name"] = String(val).trim();
+              else if (k === "second_last_name" || k.includes("segundo apellido") || k.includes("segundo_apellido")) clean["second_last_name"] = String(val).trim();
+              else if (k === "first_name" || k.includes("primer nombre") || k.includes("nombre")) clean["first_name"] = String(val).trim();
+              else if (k === "last_name" || k.includes("primer apellido") || k.includes("apellido")) clean["last_name"] = String(val).trim();
+              else if (k.includes("code") || k.includes("código") || k.includes("codigo")) clean["code"] = String(val).trim();
               else if (k.includes("document_type") || k.includes("tipo doc") || k.includes("tipo_doc")) clean["document_type"] = String(val).trim();
               else if (k.includes("document_number") || k.includes("documento") || k.includes("cédula") || k.includes("cedula")) clean["document_number"] = String(val).trim();
-              else if (k.includes("first_name") || k.includes("primer nombre") || k.includes("nombre")) clean["first_name"] = String(val).trim();
-              else if (k.includes("last_name") || k.includes("primer apellido") || k.includes("apellido")) clean["last_name"] = String(val).trim();
               else if (k.includes("email") || k.includes("correo")) clean["email"] = String(val).trim();
               else if (k.includes("mobile") || k.includes("celular")) clean["mobile"] = String(val).trim();
               else if (k.includes("phone") || k.includes("teléfono") || k.includes("telefono")) clean["phone"] = String(val).trim();
+              else if (k.includes("address") || k.includes("dirección") || k.includes("direccion")) clean["address"] = String(val).trim();
+              else if (k.includes("department_loc") || k.includes("departamento ubicación") || k.includes("depto")) clean["department_loc"] = String(val).trim();
+              else if (k.includes("city") || k.includes("ciudad") || k.includes("municipio")) clean["city"] = String(val).trim();
               else if (k.includes("job_position") || k.includes("cargo") || k.includes("puesto")) clean["job_position"] = String(val).trim();
               else if (k.includes("department") || k.includes("departamento") || k.includes("área") || k.includes("area")) clean["department"] = String(val).trim();
+              else if (k.includes("hire_date") || k.includes("fecha ingreso") || k.includes("fecha contrataci")) clean["hire_date"] = String(val).trim();
+              else if (k.includes("birth_date") || k.includes("fecha nacimiento")) clean["birth_date"] = String(val).trim();
+              else if (k.includes("gender") || k.includes("género") || k.includes("genero") || k.includes("sexo")) clean["gender"] = String(val).trim();
+              else if (k.includes("blood_type") || k.includes("grupo sanguíneo") || k.includes("rh")) clean["blood_type"] = String(val).trim();
+              else if (k.includes("marital_status") || k.includes("estado civil")) clean["marital_status"] = String(val).trim();
               else if (k.includes("eps")) clean["eps"] = String(val).trim();
               else if (k.includes("arl")) clean["arl"] = String(val).trim();
-              else if (k.includes("afp") || k.includes("pension")) clean["afp"] = String(val).trim();
+              else if (k.includes("afp") || k.includes("pension") || k.includes("pensión")) clean["afp"] = String(val).trim();
+              else if (k.includes("caja")) clean["caja_compensacion"] = String(val).trim();
+              else if (k.includes("emergency_contact_name") || k.includes("contacto emergencia")) clean["emergency_contact_name"] = String(val).trim();
+              else if (k.includes("emergency_contact_phone") || k.includes("teléfono emergencia") || k.includes("celular emergencia")) clean["emergency_contact_phone"] = String(val).trim();
+              else if (k.includes("emergency_contact_relation") || k.includes("parentesco")) clean["emergency_contact_relation"] = String(val).trim();
+              else if (k.includes("bank_name") || k.includes("banco")) clean["bank_name"] = String(val).trim();
+              else if (k.includes("bank_account_type") || k.includes("tipo cuenta")) clean["bank_account_type"] = String(val).trim();
+              else if (k.includes("bank_account_number") || k.includes("número cuenta") || k.includes("numero cuenta")) clean["bank_account_number"] = String(val).trim();
+              else if (k.includes("username") || k.includes("usuario")) clean["username"] = String(val).trim();
+              else if (k.includes("password") || k.includes("contraseña") || k.includes("clave")) clean["password"] = String(val).trim();
+              else if (k.includes("platform_access") || k.includes("acceso")) clean["platform_access"] = String(val).trim();
               else if (k.includes("status") || k.includes("estado")) clean["status"] = String(val).trim();
               else clean[key.trim()] = String(val).trim();
             }
@@ -1167,25 +1187,29 @@ export default function EmployeesPage() {
                   <p className="font-bold text-slate-800">Vista Previa ({importRows.length} Registros)</p>
                   <span className="text-[11px] text-slate-500">Primeras filas a procesar</span>
                 </div>
-                <div className="max-h-48 overflow-y-auto border rounded-lg text-[11px]">
+                <div className="max-h-56 overflow-y-auto border rounded-lg text-[11px]">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-slate-100">
-                        <TableHead>Cédula</TableHead>
-                        <TableHead>Nombre</TableHead>
-                        <TableHead>Apellido</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Cargo</TableHead>
+                        <TableHead>Documento</TableHead>
+                        <TableHead>Nombre Completo</TableHead>
+                        <TableHead>Cargo / Área</TableHead>
+                        <TableHead>Ubicación</TableHead>
+                        <TableHead>EPS / ARL</TableHead>
+                        <TableHead>Usuario</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {importRows.slice(0, 5).map((row, idx) => (
+                      {importRows.slice(0, 8).map((row, idx) => (
                         <TableRow key={idx}>
-                          <TableCell className="font-mono">{row.document_number || row.cedula}</TableCell>
-                          <TableCell>{row.first_name || row.nombre}</TableCell>
-                          <TableCell>{row.last_name || row.apellido}</TableCell>
-                          <TableCell>{row.email}</TableCell>
-                          <TableCell>{row.job_position || row.cargo}</TableCell>
+                          <TableCell className="font-mono font-bold">{row.document_type || "CC"} {row.document_number || row.cedula}</TableCell>
+                          <TableCell className="font-semibold">
+                            {[row.first_name, row.middle_name, row.last_name, row.second_last_name].filter(Boolean).join(" ") || "—"}
+                          </TableCell>
+                          <TableCell>{row.job_position || "—"} / {row.department || "—"}</TableCell>
+                          <TableCell>{row.city || "—"}, {row.department_loc || "—"}</TableCell>
+                          <TableCell>{row.eps || "—"} / {row.arl || "—"}</TableCell>
+                          <TableCell className="font-mono text-blue-600">{row.username || "—"}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

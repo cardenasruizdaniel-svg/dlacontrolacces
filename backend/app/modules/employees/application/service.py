@@ -207,9 +207,26 @@ class EmployeeService:
         return {"message": "Password reset successfully"}
 
     async def bulk_import_employees(self, company_id: str, employees_data: list[dict]) -> dict:
+        from datetime import date, datetime
         created_count = 0
         skipped_count = 0
         errors = []
+
+        def parse_date(val: any) -> date | None:
+            if not val or not str(val).strip():
+                return None
+            val_str = str(val).strip()
+            if "T" in val_str:
+                val_str = val_str.split("T")[0]
+            try:
+                return date.fromisoformat(val_str)
+            except Exception:
+                for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%y"):
+                    try:
+                        return datetime.strptime(val_str, fmt).date()
+                    except Exception:
+                        pass
+                return None
 
         for idx, data in enumerate(employees_data):
             doc_num = str(data.get("document_number", "")).strip()
@@ -217,7 +234,7 @@ class EmployeeService:
             last_name = str(data.get("last_name", "")).strip()
 
             if not doc_num or not first_name or not last_name:
-                errors.append(f"Fila {idx + 1}: Faltan campos obligatorios (Cédula, Nombre o Apellido)")
+                errors.append(f"Fila {idx + 1}: Faltan campos obligatorios (Cédula/Documento, Primer Nombre o Primer Apellido)")
                 skipped_count += 1
                 continue
 
@@ -227,23 +244,54 @@ class EmployeeService:
                 errors.append(f"Fila {idx + 1}: Ya existe el empleado con cédula '{doc_num}' ({existing.first_name} {existing.last_name})")
                 continue
 
+            # Check username uniqueness if provided
+            username = str(data.get("username", "")).strip() or None
+            if username:
+                existing_user = await self.employee_repo.get_by_username(username)
+                if existing_user:
+                    username = f"{username}_{doc_num[-4:]}"
+
+            pwd = str(data.get("password", "")).strip() or None
+            hashed_pwd = hash_password(pwd) if pwd else None
+            platform_access = str(data.get("platform_access", "both" if username else "none")).strip().lower()
+
             try:
                 emp_dict = {
                     "company_id": company_id or "dla-company-main",
                     "code": str(data.get("code", "")).strip() or f"EMP-{doc_num}",
-                    "document_type": str(data.get("document_type", "CC")).strip(),
+                    "document_type": str(data.get("document_type", "CC")).strip().upper(),
                     "document_number": doc_num,
                     "first_name": first_name,
+                    "middle_name": str(data.get("middle_name", "")).strip() or None,
                     "last_name": last_name,
-                    "email": str(data.get("email", "")).strip() or f"emp{doc_num}@dla.com",
+                    "second_last_name": str(data.get("second_last_name", "")).strip() or None,
+                    "email": str(data.get("email", "")).strip() or f"emp{doc_num}@deacontrol.com",
                     "phone": str(data.get("phone", "")).strip() or None,
                     "mobile": str(data.get("mobile", "")).strip() or None,
-                    "job_position": str(data.get("job_position", "Operador")).strip(),
-                    "department": str(data.get("department", "Operaciones")).strip(),
+                    "address": str(data.get("address", "")).strip() or None,
+                    "department_loc": str(data.get("department_loc", "Quindío")).strip(),
+                    "city": str(data.get("city", "Armenia")).strip(),
+                    "country": "CO",
+                    "birth_date": parse_date(data.get("birth_date")),
+                    "gender": str(data.get("gender", "")).strip().upper() or None,
+                    "blood_type": str(data.get("blood_type", "")).strip().upper() or None,
+                    "marital_status": str(data.get("marital_status", "")).strip().lower() or None,
                     "eps": str(data.get("eps", "")).strip() or None,
                     "arl": str(data.get("arl", "")).strip() or None,
                     "afp": str(data.get("afp", "")).strip() or None,
-                    "status": str(data.get("status", "active")).strip(),
+                    "caja_compensacion": str(data.get("caja_compensacion", "")).strip() or None,
+                    "emergency_contact_name": str(data.get("emergency_contact_name", "")).strip() or None,
+                    "emergency_contact_phone": str(data.get("emergency_contact_phone", "")).strip() or None,
+                    "emergency_contact_relation": str(data.get("emergency_contact_relation", "")).strip() or None,
+                    "hire_date": parse_date(data.get("hire_date")) or date.today(),
+                    "bank_name": str(data.get("bank_name", "")).strip() or None,
+                    "bank_account_type": str(data.get("bank_account_type", "")).strip().lower() or None,
+                    "bank_account_number": str(data.get("bank_account_number", "")).strip() or None,
+                    "username": username,
+                    "hashed_password": hashed_pwd,
+                    "platform_access": platform_access if platform_access in ("none", "web", "mobile", "both") else "both",
+                    "account_status": "active" if username else "inactive",
+                    "status": str(data.get("status", "active")).strip().lower(),
                 }
                 await self.employee_repo.create(**emp_dict)
                 created_count += 1

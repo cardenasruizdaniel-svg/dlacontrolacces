@@ -59,10 +59,15 @@ async def download_employees_template():
     ws = wb.active
     ws.title = "Plantilla Empleados"
 
-    # Header columns
+    # All comprehensive columns for complete employee onboarding
     headers = [
-        "code", "document_type", "document_number", "first_name", "last_name",
-        "email", "phone", "mobile", "job_position", "department", "eps", "arl", "afp", "status"
+        "code", "document_type", "document_number", "first_name", "middle_name",
+        "last_name", "second_last_name", "email", "phone", "mobile", "address",
+        "department_loc", "city", "job_position", "department", "hire_date",
+        "birth_date", "gender", "blood_type", "marital_status", "eps", "arl", "afp",
+        "caja_compensacion", "emergency_contact_name", "emergency_contact_phone",
+        "emergency_contact_relation", "bank_name", "bank_account_type",
+        "bank_account_number", "username", "password", "platform_access", "status"
     ]
     
     header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid") # Dark Slate / Navy
@@ -82,10 +87,24 @@ async def download_employees_template():
         cell.alignment = center_align
         cell.border = border_thin
 
-    # Sample rows for guidance
+    # Complete sample rows for guidance
     sample_rows = [
-        ["EMP-1001", "CC", "1020304050", "Carlos", "Pérez", "carlos.perez@empresa.com", "3001234567", "3001234567", "Operador de Campo", "Operaciones", "EPS Sura", "Positiva ARL", "Porvenir", "active"],
-        ["EMP-1002", "CC", "1030405060", "María", "Gómez", "maria.gomez@empresa.com", "3109876543", "3109876543", "Supervisora de Sede", "Operaciones", "Sanitas", "SURA ARL", "Protección", "active"],
+        [
+            "EMP-1001", "CC", "1020304050", "Carlos", "Alberto", "Pérez", "López",
+            "carlos.perez@empresa.com", "6012345678", "3001234567", "Carrera 14 # 23-45",
+            "Quindío", "Armenia", "Operador de Campo", "Operaciones", "2024-01-15",
+            "1992-08-20", "M", "O+", "soltero", "EPS Sura", "Positiva ARL", "Porvenir",
+            "Comfenalco Quindío", "Laura Pérez", "3109876543", "Cónyuge",
+            "Bancolombia", "ahorros", "12345678901", "cperez", "Dlaredes2026*", "both", "active"
+        ],
+        [
+            "EMP-1002", "CC", "1030405060", "María", "Fernanda", "Gómez", "Restrepo",
+            "maria.gomez@empresa.com", "6067412345", "3109876543", "Calle 10 # 15-20",
+            "Quindío", "Armenia", "Supervisora de Operaciones", "Operaciones", "2023-06-01",
+            "1988-11-12", "F", "A+", "casado", "Sanitas", "SURA ARL", "Protección",
+            "Comfenalco Quindío", "Jorge Gómez", "3201234567", "Hermano/a",
+            "Banco de Bogotá", "ahorros", "98765432100", "mgomez", "Dlaredes2026*", "both", "active"
+        ],
     ]
 
     for row_data in sample_rows:
