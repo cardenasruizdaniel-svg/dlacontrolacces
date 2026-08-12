@@ -16,7 +16,7 @@ class EmployeeCreateRequest(BaseModel):
     job_position_id: str | None = None
     cost_center_id: str | None = None
     work_team_id: str | None = None
-    code: str
+    code: str | None = None
     document_type: str
     document_number: str
     first_name: str

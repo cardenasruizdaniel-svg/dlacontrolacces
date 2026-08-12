@@ -34,6 +34,7 @@ from app.modules.facial_recognition.presentation.routes import router as facial_
 from app.modules.catalogs.routes import router as catalogs_router
 from app.modules.system_config.routes import router as system_config_router
 from app.modules.attendance.routes import router as attendance_router
+from app.modules.branches.presentation.routes import router as branches_router
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +268,7 @@ app.include_router(facial_router, prefix=settings.API_V1_PREFIX)
 app.include_router(catalogs_router, prefix=settings.API_V1_PREFIX)
 app.include_router(system_config_router, prefix=settings.API_V1_PREFIX)
 app.include_router(attendance_router, prefix=settings.API_V1_PREFIX)
+app.include_router(branches_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get(f"{settings.API_V1_PREFIX}/company", tags=["Company Compatibility"])

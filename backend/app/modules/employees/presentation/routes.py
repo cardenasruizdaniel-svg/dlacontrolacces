@@ -53,6 +53,25 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+@router.get("/next-code")
+async def get_next_employee_code(current_user: CurrentUser, db: DbSession) -> dict:
+    """Return the next available sequential employee code (EMP-001, EMP-002…)."""
+    service = get_service(db)
+    code = await service.get_next_code()
+    return {"code": code}
+
+
+@router.post("/resequence-codes")
+async def resequence_employee_codes(current_user: CurrentUser, db: DbSession) -> dict:
+    """Renumber ALL employees to EMP-001, EMP-002… in chronological order.
+
+    Use this once to fix legacy codes that are not consecutive.
+    The oldest registered employee becomes EMP-001.
+    """
+    service = get_service(db)
+    return await service.resequence_all_codes()
+
+
 @router.get("/template")
 async def download_employees_template():
     wb = openpyxl.Workbook()
@@ -171,6 +190,7 @@ async def get_employee(employee_id: str, current_user: CurrentUser, db: DbSessio
         "photo_url": employee.photo_url,
         "company_id": employee.company_id,
         "branch_id": employee.branch_id,
+        "branch_name": employee.branch.name if getattr(employee, "branch", None) else None,
         "department_id": employee.department_id,
         "job_position_id": employee.job_position_id,
         "cost_center_id": employee.cost_center_id,
@@ -196,6 +216,22 @@ async def get_employee(employee_id: str, current_user: CurrentUser, db: DbSessio
         "username": employee.username,
         "role_id": employee.role_id,
     }
+
+
+class EmployeeStatusChangeRequest(BaseModel):
+    status: str
+    reason: str | None = None
+
+
+@router.patch("/{employee_id}/status")
+async def update_employee_status(
+    employee_id: str,
+    body: EmployeeStatusChangeRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> dict:
+    service = get_service(db)
+    return await service.update_employee_status(employee_id, new_status=body.status, reason=body.reason, db=db)
 
 
 @router.put("/{employee_id}")

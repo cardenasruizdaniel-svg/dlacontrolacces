@@ -147,13 +147,68 @@ class AccessControlService:
             employee_id=employee_id, record_type=record_type,
             start_date=start_date, end_date=end_date, skip=skip, limit=page_size,
         )
-        return PaginatedResult.create(
-            items=[{
-                "id": r.id, "employee_id": r.employee_id, "record_type": r.record_type,
-                "timestamp": r.timestamp, "latitude": r.latitude, "longitude": r.longitude,
-                "face_verified": r.face_verified, "inside_geofence": r.inside_geofence,
+
+        emp_ids = {r.employee_id for r in items if r.employee_id}
+        client_ids = {r.client_id for r in items if r.client_id}
+
+        emp_map = {}
+        if emp_ids:
+            from sqlalchemy import select
+            from sqlalchemy.orm import selectinload
+            from app.shared.database.models_hr import Employee
+            emp_res = await self.record_repo.db.execute(
+                select(Employee).options(selectinload(Employee.branch)).where(Employee.id.in_(emp_ids))
+            )
+            for emp in emp_res.scalars().all():
+                emp_map[emp.id] = {
+                    "name": f"{emp.first_name} {emp.last_name}",
+                    "code": emp.code,
+                    "document_number": emp.document_number,
+                    "photo_url": emp.photo_url,
+                    "branch_name": emp.branch.name if getattr(emp, "branch", None) else None,
+                }
+
+        client_map = {}
+        if client_ids:
+            from sqlalchemy import select
+            from app.shared.database.models_clients import Client
+            cl_res = await self.record_repo.db.execute(
+                select(Client).where(Client.id.in_(client_ids))
+            )
+            for cl in cl_res.scalars().all():
+                client_map[cl.id] = cl.name
+
+        records_data = []
+        for r in items:
+            emp_info = emp_map.get(r.employee_id, {})
+            sede_name = (
+                client_map.get(r.client_id)
+                or r.geofence_name
+                or emp_info.get("branch_name")
+                or r.address
+                or "Sede Central Principal"
+            )
+            records_data.append({
+                "id": r.id,
+                "employee_id": r.employee_id,
+                "employee_name": emp_info.get("name", "Empleado"),
+                "employee_code": emp_info.get("code", "—"),
+                "employee_document": emp_info.get("document_number", "—"),
+                "employee_photo": emp_info.get("photo_url"),
+                "sede_name": sede_name,
+                "record_type": r.record_type,
+                "timestamp": r.timestamp,
+                "latitude": r.latitude,
+                "longitude": r.longitude,
+                "face_verified": r.face_verified,
+                "inside_geofence": r.inside_geofence,
                 "worked_hours": r.worked_hours,
-            } for r in items],
+                "observations": r.observations,
+                "device_model": r.device_model,
+            })
+
+        return PaginatedResult.create(
+            items=records_data,
             total=total, page=page, page_size=page_size,
         )
 

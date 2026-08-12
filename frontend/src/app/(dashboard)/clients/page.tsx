@@ -8,7 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, MapPin, Navigation, Loader2, CheckCircle2, AlertCircle, Eye, Globe, Download, Upload, FileText, FileSpreadsheet } from "lucide-react";
+import { 
+  Plus, Search, MapPin, Navigation, Loader2, CheckCircle2, AlertCircle, 
+  Eye, Globe, Download, Upload, FileText, FileSpreadsheet,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Building2, Power
+} from "lucide-react";
 import * as XLSX from "xlsx";
 
 // Official datasets for Colombia Departments & Municipalities
@@ -101,7 +105,9 @@ export default function ClientsPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const companyId = typeof window !== "undefined" ? localStorage.getItem("company_id") || "dla-company-main" : "dla-company-main";
+  const companyId = React.useMemo(() => {
+    return typeof window !== "undefined" ? localStorage.getItem("company_id") || "dla-company-main" : "dla-company-main";
+  }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -224,10 +230,13 @@ export default function ClientsPage() {
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(24);
 
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(search);
+      setPage(1);
     }, 300);
     return () => clearTimeout(handler);
   }, [search]);
@@ -239,7 +248,8 @@ export default function ClientsPage() {
         params: { 
           company_id: companyId, 
           search: debouncedSearch.trim() || undefined, 
-          page_size: 100 
+          page,
+          page_size: pageSize 
         } 
       });
       const items = res.data.items || [];
@@ -252,7 +262,21 @@ export default function ClientsPage() {
       setClients([]);
     }
     setLoading(false);
-  }, [companyId, debouncedSearch]);
+  }, [companyId, debouncedSearch, page, pageSize]);
+
+  const handleQuickClientStatus = async (client: any, newStatus: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.patch(`/clients/${client.id}/status`, { status: newStatus });
+      setClients((prev) =>
+        prev.map((c) => (c.id === client.id ? { ...c, status: newStatus } : c))
+      );
+      const label = newStatus === "active" ? "Activo" : newStatus === "inactive" ? "Inactivo" : "Suspendido";
+      showToast("success", `Estado de "${client.name}" actualizado a "${label}".`);
+    } catch (err: any) {
+      showToast("error", err?.response?.data?.detail || "Error al actualizar estado del cliente");
+    }
+  };
 
   useEffect(() => { loadClients(); }, [loadClients]);
 
@@ -487,20 +511,41 @@ export default function ClientsPage() {
           <Card className="col-span-full"><CardContent className="p-12 text-center text-muted-foreground">No se encontraron clientes registrados</CardContent></Card>
         ) : (
           clients.map((client) => (
-            <Card key={client.id} className="hover:shadow-md transition-shadow cursor-pointer border border-slate-200" onClick={() => router.push(`/clients/${client.id}`)}>
+            <Card key={client.id} className={`hover:shadow-md transition-shadow cursor-pointer border ${client.status === "inactive" ? "border-amber-200 bg-amber-50/20 opacity-80" : "border-slate-200"}`} onClick={() => router.push(`/clients/${client.id}`)}>
               <CardContent className="p-6">
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <div className="space-y-1">
-                    <h3 className="font-semibold text-foreground">{client.name}</h3>
+                    <h3 className="font-semibold text-foreground flex items-center gap-1.5">
+                      {client.name}
+                    </h3>
                     <p className="text-xs text-muted-foreground font-mono">{client.nit ? `NIT: ${client.nit}` : "Sin NIT"}</p>
                     <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                      <MapPin className="h-3 w-3 text-destructive" />
+                      <MapPin className="h-3 w-3 text-destructive shrink-0" />
                       {client.city || "Armenia"} ({client.department || "Quindío"})
                     </p>
                   </div>
-                  <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
-                    {typeLabels[client.client_type] || client.client_type}
-                  </Badge>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
+                      {typeLabels[client.client_type] || client.client_type}
+                    </Badge>
+                    <select
+                      className={`text-[10px] font-semibold rounded px-1.5 py-0.5 border cursor-pointer ${
+                        client.status === "active" || !client.status
+                          ? "bg-green-50 text-green-700 border-green-300"
+                          : client.status === "suspended"
+                          ? "bg-red-50 text-red-700 border-red-300"
+                          : "bg-amber-50 text-amber-700 border-amber-300"
+                      }`}
+                      value={client.status || "active"}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => handleQuickClientStatus(client, e.target.value, e as any)}
+                      title="Cambiar estado del cliente"
+                    >
+                      <option value="active">🟢 Activo</option>
+                      <option value="inactive">🟡 Inactivo</option>
+                      <option value="suspended">🔴 Suspendido</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="mt-3 pt-3 border-t flex items-center justify-between text-xs gap-1">
@@ -524,6 +569,75 @@ export default function ClientsPage() {
             </Card>
           ))
         )}
+      </div>
+
+      {/* Paginación de Clientes */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground px-1">
+        <div className="flex items-center gap-2">
+          <span>Mostrar</span>
+          <select
+            className="h-8 rounded-md border bg-background px-2 text-xs font-medium"
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+          >
+            <option value={12}>12 por página</option>
+            <option value={24}>24 por página</option>
+            <option value={48}>48 por página</option>
+            <option value={96}>96 por página</option>
+          </select>
+          <span>
+            de <strong>{total}</strong> clientes/sedes (Página <strong>{page}</strong> de <strong>{Math.max(1, Math.ceil(total / pageSize))}</strong>)
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-8 p-0"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage(1)}
+            title="Primera página"
+          >
+            <ChevronsLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-xs font-medium gap-1"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft className="h-4 w-4" /> Anterior
+          </Button>
+
+          <span className="px-2 font-semibold text-foreground">
+            {page} / {Math.max(1, Math.ceil(total / pageSize))}
+          </span>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-xs font-medium gap-1"
+            disabled={page >= Math.ceil(total / pageSize) || loading}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Siguiente <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-8 p-0"
+            disabled={page >= Math.ceil(total / pageSize) || loading}
+            onClick={() => setPage(Math.max(1, Math.ceil(total / pageSize)))}
+            title="Última página"
+          >
+            <ChevronsRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Modal Nuevo Cliente */}

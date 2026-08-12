@@ -12,7 +12,9 @@ export default function Header() {
   const { user, logout } = useAuthStore();
   const { toggleSidebar, theme, toggleTheme } = useUIStore();
 
-  const isAdmin = user?.is_superuser || user?.role_id;
+  const isSuperAdmin = Boolean(user?.is_superuser) || 
+    (typeof user?.role === "string" && user.role.toLowerCase().includes("super")) || 
+    (typeof user?.role === "object" && user.role?.name?.toLowerCase().includes("super"));
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 print:hidden">
@@ -26,7 +28,7 @@ export default function Header() {
         </div>
       </div>
       <div className="flex items-center gap-3">
-        {isAdmin && (
+        {isSuperAdmin && (
           <Link href="/mobile">
             <Button size="sm" className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-primary-foreground font-semibold shadow-md border-0 transition-all hover:scale-105 rounded-xl">
               <Smartphone className="h-4 w-4" />

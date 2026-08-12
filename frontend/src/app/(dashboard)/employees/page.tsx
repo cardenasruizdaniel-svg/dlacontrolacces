@@ -7,7 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Plus, Search, Pencil, Trash2, Eye, AlertCircle, CheckCircle2, Download, Upload, FileText, FileSpreadsheet, Loader2 } from "lucide-react";
+import { 
+  Plus, Search, Pencil, Trash2, Eye, AlertCircle, CheckCircle2, 
+  Download, Upload, FileText, FileSpreadsheet, Loader2,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Building2, UserX, UserCheck, Power, RefreshCw, Hash
+} from "lucide-react";
 import * as XLSX from "xlsx";
 
 // Complete official dataset of Colombian Departments and All Municipalities
@@ -215,6 +219,7 @@ const FALLBACK_ROLES = [
 
 const emptyEmployee: Record<string, any> = {
   company_id: "",
+  branch_id: "",
   code: "",
   document_type: "CC",
   document_number: "",
@@ -230,6 +235,7 @@ const emptyEmployee: Record<string, any> = {
   city: "Armenia",
   department_id: "",
   job_position_id: "",
+  job_position: "",
   hire_date: "",
   eps: "EPS Sura",
   arl: "Positiva Compañía de Seguros (ARL Positiva)",
@@ -242,9 +248,9 @@ const emptyEmployee: Record<string, any> = {
 };
 
 function EmployeeForm({
-  data, onChange, roles, catalogs, editing
+  data, onChange, roles, catalogs, branches, editing
 }: {
-  data: any; onChange: (d: any) => void; roles?: any[]; catalogs?: any; editing?: any;
+  data: any; onChange: (d: any) => void; roles?: any[]; catalogs?: any; branches?: any[]; editing?: any;
 }) {
   const set = (k: string, v: any) => onChange({ ...data, [k]: v });
 
@@ -337,7 +343,42 @@ function EmployeeForm({
             </select>
           </div>
           {field("Número de documento", "document_number", { required: true, placeholder: "Ej: 1234567890" })}
-          {field("Código empleado", "code", { required: true, placeholder: "Ej: EMP-001" })}
+          {/* Código empleado — auto-generado con botón interactivo */}
+          <div className="w-48">
+            <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center justify-between">
+              <span>Código <span className="text-[10px] text-blue-600 font-bold">(EMP-XXX)</span></span>
+            </label>
+            <div className="flex gap-1">
+              <div className="relative flex-1">
+                <Hash className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-blue-600" />
+                <Input
+                  value={data.code || ""}
+                  onChange={(e) => set("code", e.target.value.toUpperCase())}
+                  placeholder="EMP-001"
+                  className="h-9 text-sm font-mono pl-8 bg-blue-50/50 border-blue-300 font-bold text-blue-900 focus:bg-white transition-colors"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 px-2 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300 gap-1 font-semibold shrink-0"
+                title="Generar automáticamente el siguiente código consecutivo"
+                onClick={async () => {
+                  try {
+                    const res = await api.get("/employees/next-code");
+                    if (res.data?.code) {
+                      set("code", res.data.code);
+                    }
+                  } catch {}
+                }}
+              >
+                <RefreshCw className="h-3.5 w-3.5 text-blue-600" />
+                Auto
+              </Button>
+            </div>
+            <p className="text-[10px] text-blue-600 mt-0.5 font-medium">Consecutivo automático asignado</p>
+          </div>
         </div>
       </div>
 
@@ -476,22 +517,40 @@ function EmployeeForm({
 
       {/* Información Laboral & Seguridad Social */}
       <div>
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Información Laboral & Seguridad Social</h4>
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Información Laboral & Sede de Asignación</h4>
         <div className="grid grid-cols-2 gap-3 mb-3">
-          {field("Fecha de ingreso", "hire_date", { type: "date" })}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Estado</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Sede / Subsede Asignada</label>
             <select
               className="flex h-9 w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+              value={data.branch_id || ""}
+              onChange={(e) => set("branch_id", e.target.value)}
+            >
+              <option value="">🏢 Sede Principal Central</option>
+              {branches?.map((b: any) => (
+                <option key={b.id} value={b.id}>
+                  {b.is_sub_branch ? "↳ Subsede: " : "🏢 Sede: "}{b.name} ({b.city})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Estado de Vinculación</label>
+            <select
+              className="flex h-9 w-full rounded-md border bg-background px-3 py-1.5 text-sm font-medium"
               value={data.status || "active"}
               onChange={(e) => set("status", e.target.value)}
             >
-              <option value="active">Activo</option>
-              <option value="inactive">Inactivo</option>
-              <option value="terminated">Retirado</option>
-              <option value="suspended">Suspendido</option>
+              <option value="active">🟢 Activo (Con acceso a funciones)</option>
+              <option value="inactive">🟡 Inactivo (Bloqueado de acceso)</option>
+              <option value="terminated">🔴 Retirado / Contrato Finalizado</option>
+              <option value="suspended">🟠 Suspendido</option>
             </select>
           </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          {field("Fecha de ingreso", "hire_date", { type: "date" })}
+          {field("Cargo / Posición", "job_position", { placeholder: "Ej: Vigilante, Supervisor, Médico..." })}
         </div>
 
         {/* EPS, ARL, AFP Dropdowns */}
@@ -648,6 +707,9 @@ export default function EmployeesPage() {
     return () => clearTimeout(handler);
   }, [search]);
 
+  const [branches, setBranches] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -668,6 +730,12 @@ export default function EmployeesPage() {
   });
   const [existingAccess, setExistingAccess] = useState(false);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [resequencing, setResequencing] = useState(false);
+
+  // Reset page to 1 when searching
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   // Bulk Import State
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -681,7 +749,9 @@ export default function EmployeesPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const companyId = (typeof window !== "undefined" ? localStorage.getItem("company_id") : null) || "dla-company-main";
+  const companyId = React.useMemo(() => {
+    return (typeof window !== "undefined" ? localStorage.getItem("company_id") : null) || "dla-company-main";
+  }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -830,7 +900,8 @@ export default function EmployeesPage() {
         params: { 
           company_id: companyId, 
           search: debouncedSearch.trim() || undefined, 
-          page_size: 100 
+          page,
+          page_size: pageSize 
         } 
       });
       const items = res.data.items || [];
@@ -845,7 +916,7 @@ export default function EmployeesPage() {
       setEmployees([]);
     }
     setLoading(false);
-  }, [companyId, debouncedSearch]);
+  }, [companyId, debouncedSearch, page, pageSize]);
 
   const loadStats = useCallback(async () => {
     try {
@@ -866,6 +937,13 @@ export default function EmployeesPage() {
     } catch {
       setRoles(FALLBACK_ROLES);
     }
+  }, []);
+
+  const loadBranches = useCallback(async () => {
+    try {
+      const res = await api.get("/branches");
+      setBranches(res.data.items || res.data || []);
+    } catch {}
   }, []);
 
   const loadCatalogs = useCallback(async () => {
@@ -891,15 +969,38 @@ export default function EmployeesPage() {
     loadEmployees();
     loadStats();
     loadRoles();
+    loadBranches();
     loadCatalogs();
-  }, [loadEmployees, loadStats, loadRoles, loadCatalogs]);
+  }, [loadEmployees, loadStats, loadRoles, loadBranches, loadCatalogs]);
 
-  const openCreate = () => {
+  const handleQuickStatusChange = async (empId: string, newStatus: string) => {
+    try {
+      await api.patch(`/employees/${empId}/status`, { status: newStatus });
+      setEmployees((prev) =>
+        prev.map((emp) =>
+          emp.id === empId ? { ...emp, status: newStatus } : emp
+        )
+      );
+      const label = newStatus === "active" ? "Activo" : newStatus === "inactive" ? "Inactivo" : "Retirado";
+      showToast("success", `Estado actualizado a "${label}". Cuenta de acceso ${newStatus === "active" ? "habilitada" : "bloqueada"}.`);
+      loadStats();
+    } catch (err: any) {
+      showToast("error", err?.response?.data?.detail || "Error al actualizar estado del empleado");
+    }
+  };
+
+  const openCreate = async () => {
     setEditMode(false);
     setEditId(null);
     setExistingAccess(false);
-    setFormData({ ...emptyEmployee, company_id: companyId });
     setError("");
+    // Pre-load the next sequential code from the server
+    let nextCode = "";
+    try {
+      const res = await api.get("/employees/next-code");
+      nextCode = res.data.code || "";
+    } catch {}
+    setFormData({ ...emptyEmployee, company_id: companyId, code: nextCode });
     setDialogOpen(true);
   };
 
@@ -925,8 +1026,10 @@ export default function EmployeesPage() {
         address: d.address || "",
         department_loc: d.department_loc || "Quindío",
         city: d.city || "Armenia",
+        branch_id: d.branch_id || "",
         department_id: d.department_id || "",
         job_position_id: d.job_position_id || "",
+        job_position: d.job_position || "",
         hire_date: d.hire_date || "",
         eps: d.eps || "EPS Sura",
         arl: d.arl || "Positiva Compañía de Seguros (ARL Positiva)",
@@ -953,8 +1056,8 @@ export default function EmployeesPage() {
   };
 
   const handleSave = async () => {
-    if (!formData.first_name || !formData.last_name || !formData.document_number || !formData.code) {
-      setError("Primer nombre, primer apellido, número de documento y código son obligatorios");
+    if (!formData.first_name || !formData.last_name || !formData.document_number) {
+      setError("Primer nombre, primer apellido y número de documento son obligatorios");
       return;
     }
 
@@ -1078,6 +1181,27 @@ export default function EmployeesPage() {
           <p className="text-xs text-muted-foreground">Catálogo de personal, vinculaciones laborales y biometría ({total} registros)</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            onClick={async () => {
+              if (!confirm("¿Reordenar TODOS los empleados a EMP-001, EMP-002...? Esta operación reasigna los códigos en orden cronológico y no se puede deshacer.")) return;
+              setResequencing(true);
+              try {
+                const res = await api.post("/employees/resequence-codes");
+                showToast("success", res.data.message || "Códigos reasignados correctamente.");
+                loadEmployees();
+              } catch (err: any) {
+                showToast("error", err?.response?.data?.detail || "Error al reordenar códigos");
+              } finally {
+                setResequencing(false);
+              }
+            }}
+            disabled={resequencing}
+            className="gap-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-sm"
+            title="Reordenar todos los códigos EMP-001, EMP-002..."
+          >
+            {resequencing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hash className="h-4 w-4" />}
+            Reordenar Códigos (EMP-001)
+          </Button>
           <Button variant="outline" onClick={handleDownloadEmployeesTemplate} className="gap-1.5 text-xs font-semibold">
             <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Plantilla Excel (.xlsx)
           </Button>
@@ -1137,34 +1261,77 @@ export default function EmployeesPage() {
                 <TableHead>Código</TableHead>
                 <TableHead>Nombre completo</TableHead>
                 <TableHead>Documento</TableHead>
-                <TableHead>Email</TableHead>
+                <TableHead>Sede Asignada</TableHead>
                 <TableHead>Ubicación</TableHead>
-                <TableHead>Estado</TableHead>
+                <TableHead>Estado & Acceso</TableHead>
                 <TableHead>Usuario</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Cargando...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    Cargando listado de empleados...
+                  </div>
+                </TableCell></TableRow>
               ) : employees.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No se encontraron empleados</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">No se encontraron empleados registrados con estos filtros</TableCell></TableRow>
               ) : (
                 employees.map((emp) => (
                   <TableRow key={emp.id}>
-                    <TableCell className="font-mono text-sm">{emp.code}</TableCell>
-                    <TableCell className="font-medium">{emp.first_name} {emp.last_name}</TableCell>
-                    <TableCell>{emp.document_type} {emp.document_number}</TableCell>
-                    <TableCell className="text-muted-foreground">{emp.email || "—"}</TableCell>
+                    <TableCell className="font-mono text-xs font-semibold">{emp.code}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {emp.photo_url ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img 
+                            src={emp.photo_url.startsWith("http") || emp.photo_url.startsWith("data:") ? emp.photo_url : `data:image/jpeg;base64,${emp.photo_url}`} 
+                            alt={emp.first_name} 
+                            className="h-7 w-7 rounded-full object-cover border" 
+                          />
+                        ) : (
+                          <div className="h-7 w-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-500">
+                            {emp.first_name?.[0]}{emp.last_name?.[0]}
+                          </div>
+                        )}
+                        <span>{emp.first_name} {emp.last_name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs">{emp.document_type} {emp.document_number}</TableCell>
+                    <TableCell>
+                      {emp.branch_name ? (
+                        <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 gap-1 font-normal">
+                          <Building2 className="h-3 w-3" />
+                          {emp.branch_name}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">🏢 Sede Principal</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-xs">{emp.city || "Armenia"} ({emp.department_loc || "Quindío"})</TableCell>
                     <TableCell>
-                      <Badge variant={emp.status === "active" ? "default" : emp.status === "terminated" ? "destructive" : "secondary"}>
-                        {emp.status === "active" ? "Activo" : emp.status === "terminated" ? "Retirado" : emp.status === "inactive" ? "Inactivo" : emp.status}
-                      </Badge>
+                      <select
+                        className={`text-xs font-semibold rounded-md px-2 py-1 border transition-colors cursor-pointer ${
+                          emp.status === "active"
+                            ? "bg-green-50 text-green-700 border-green-300 hover:bg-green-100"
+                            : emp.status === "terminated"
+                            ? "bg-red-50 text-red-700 border-red-300 hover:bg-red-100"
+                            : "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
+                        }`}
+                        value={emp.status || "active"}
+                        onChange={(e) => handleQuickStatusChange(emp.id, e.target.value)}
+                        title="Cambiar estado del empleado (Activo / Inactivo / Retirado)"
+                      >
+                        <option value="active">🟢 Activo</option>
+                        <option value="inactive">🟡 Inactivo (Sin Acceso)</option>
+                        <option value="terminated">🔴 Retirado / Liquidado</option>
+                      </select>
                     </TableCell>
                     <TableCell>
                       {emp.username ? (
-                        <Badge variant="default" className="text-[10px]">
+                        <Badge variant={emp.status === "active" ? "default" : "secondary"} className="text-[10px]">
                           {emp.username}
                           {emp.platform_access === "both" ? " (Web+App)" : emp.platform_access === "web" ? " (Web)" : emp.platform_access === "mobile" ? " (App)" : ""}
                         </Badge>
@@ -1173,9 +1340,9 @@ export default function EmployeesPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-right space-x-1">
-                      <Button variant="ghost" size="sm" onClick={() => openView(emp)}><Eye className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(emp)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => setDeleteId(emp.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => openView(emp)} title="Ver ficha completa"><Eye className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(emp)} title="Editar empleado"><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => setDeleteId(emp.id)} title="Eliminar"><Trash2 className="h-4 w-4 text-red-500" /></Button>
                     </TableCell>
                   </TableRow>
                 ))
@@ -1184,6 +1351,75 @@ export default function EmployeesPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Paginación Completa */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground px-1">
+        <div className="flex items-center gap-2">
+          <span>Mostrar</span>
+          <select
+            className="h-8 rounded-md border bg-background px-2 text-xs font-medium"
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+          >
+            <option value={10}>10 por página</option>
+            <option value={25}>25 por página</option>
+            <option value={50}>50 por página</option>
+            <option value={100}>100 por página</option>
+          </select>
+          <span>
+            de <strong>{total}</strong> empleados registrados (Página <strong>{page}</strong> de <strong>{Math.max(1, Math.ceil(total / pageSize))}</strong>)
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-8 p-0"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage(1)}
+            title="Primera página"
+          >
+            <ChevronsLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-xs font-medium gap-1"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft className="h-4 w-4" /> Anterior
+          </Button>
+
+          <span className="px-2 font-semibold text-foreground">
+            {page} / {Math.max(1, Math.ceil(total / pageSize))}
+          </span>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-xs font-medium gap-1"
+            disabled={page >= Math.ceil(total / pageSize) || loading}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Siguiente <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-8 p-0"
+            disabled={page >= Math.ceil(total / pageSize) || loading}
+            onClick={() => setPage(Math.max(1, Math.ceil(total / pageSize)))}
+            title="Última página"
+          >
+            <ChevronsRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
 
       {/* Diálogo Crear/Editar */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -1202,6 +1438,7 @@ export default function EmployeesPage() {
             onChange={setFormData}
             roles={roles}
             catalogs={catalogs}
+            branches={branches}
             editing={editMode ? { ...formData, has_access: existingAccess } : null}
           />
           <DialogFooter>
@@ -1215,7 +1452,7 @@ export default function EmployeesPage() {
       <Dialog open={!!deleteId} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Eliminar Empleado</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">¿Está seguro que desea eliminar este empleado? Esta acción no se puede deshacer.</p>
+          <p className="text-sm text-muted-foreground">¿Está seguro que desea eliminar este empleado? Si tiene historial laboral (turnos, asistencias o nómina), le sugerimos cambiar su estado a <strong>Inactivo</strong> o <strong>Retirado</strong>.</p>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline" size="sm">Cancelar</Button></DialogClose>
             <Button variant="destructive" size="sm" onClick={handleDelete}>Eliminar</Button>
@@ -1233,10 +1470,16 @@ export default function EmployeesPage() {
                 <p className="text-lg font-bold text-blue-900">
                   {viewData.first_name} {viewData.middle_name || ""} {viewData.last_name} {viewData.second_last_name || ""}
                 </p>
-                <p className="text-xs text-blue-600">{viewData.code}</p>
+                <p className="text-xs text-blue-600 font-mono">{viewData.code}</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><span className="text-muted-foreground">Estado:</span> <Badge variant={viewData.status === "active" ? "default" : "secondary"}>{viewData.status === "active" ? "Activo" : viewData.status}</Badge></div>
+                <div>
+                  <span className="text-muted-foreground">Estado:</span>{" "}
+                  <Badge variant={viewData.status === "active" ? "default" : viewData.status === "terminated" ? "destructive" : "secondary"}>
+                    {viewData.status === "active" ? "🟢 Activo" : viewData.status === "terminated" ? "🔴 Retirado" : "🟡 Inactivo"}
+                  </Badge>
+                </div>
+                <div><span className="text-muted-foreground">Sede Asignada:</span> <strong className="text-foreground">{viewData.branch_name || "Sede Central"}</strong></div>
                 <div><span className="text-muted-foreground">Documento:</span> {viewData.document_type} {viewData.document_number}</div>
                 <div><span className="text-muted-foreground">Departamento:</span> {viewData.department_loc || "Quindío"}</div>
                 <div><span className="text-muted-foreground">Ciudad:</span> {viewData.city || "Armenia"}</div>

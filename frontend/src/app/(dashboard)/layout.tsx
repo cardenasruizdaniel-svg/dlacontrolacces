@@ -27,11 +27,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (isAttendanceKiosk) return;
 
     if (!isLoading && !isAuthenticated) {
-      const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access_token");
-      if (hasToken) {
-        // Token exists in storage, do not bounce to login while state resolves
-        return;
-      }
       const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
       if (currentPath && currentPath !== "/" && currentPath !== "/login") {
         router.push(`/login?redirect=${encodeURIComponent(currentPath)}`);

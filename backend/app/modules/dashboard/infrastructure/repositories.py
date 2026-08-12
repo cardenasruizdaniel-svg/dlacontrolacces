@@ -91,11 +91,13 @@ class DashboardRepository:
         return list(r.scalars().all())
 
     async def get_productivity_metrics(self, company_id: str) -> dict:
-        today = date.today()
-        total_shifts = await self.count_shifts_by_status(company_id, "scheduled")
-        completed = await self.count_shifts_by_status(company_id, "completed")
-        in_progress = await self.count_shifts_by_status(company_id, "in_progress")
-        absent = await self.count_shifts_by_status(company_id, "absent")
+        import asyncio
+        total_shifts, completed, in_progress, absent = await asyncio.gather(
+            self.count_shifts_by_status(company_id, "scheduled"),
+            self.count_shifts_by_status(company_id, "completed"),
+            self.count_shifts_by_status(company_id, "in_progress"),
+            self.count_shifts_by_status(company_id, "absent"),
+        )
         rate = (completed / total_shifts * 100) if total_shifts > 0 else 0
         return {
             "total_shifts": total_shifts, "completed": completed,

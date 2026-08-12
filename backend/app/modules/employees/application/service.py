@@ -18,6 +18,14 @@ class EmployeeService:
         existing = await self.employee_repo.get_by_document(kwargs.get("document_number", ""))
         if existing:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe un empleado registrado con este número de documento.")
+
+        # ── Auto-generate sequential code if not provided ──────────────────────
+        provided_code = kwargs.get("code")
+        if not provided_code or not str(provided_code).strip():
+            kwargs["code"] = await self.employee_repo.get_next_code()
+        else:
+            kwargs["code"] = str(provided_code).strip().upper()
+
         username = kwargs.pop("username", None)
         if username and str(username).strip():
             username = str(username).strip()
@@ -49,6 +57,15 @@ class EmployeeService:
             )
         return {"id": employee.id, "code": employee.code, "full_name": f"{employee.first_name} {employee.last_name}"}
 
+    async def get_next_code(self) -> str:
+        """Return the next sequential EMP-XXX code without persisting anything."""
+        return await self.employee_repo.get_next_code()
+
+    async def resequence_all_codes(self) -> dict:
+        """Renumber all employees EMP-001, EMP-002… in chronological order."""
+        count = await self.employee_repo.resequence_all_codes()
+        return {"resequenced": count, "message": f"Se reasignaron códigos a {count} empleados correctamente."}
+
     async def get_employee(self, employee_id: str) -> Employee | None:
         employee = await self.employee_repo.get_by_id(employee_id)
         if not employee:
@@ -71,8 +88,48 @@ class EmployeeService:
         if "photo_url" in kwargs and not kwargs["photo_url"]:
             kwargs["facial_encoding"] = None
 
+        if "status" in kwargs and kwargs["status"]:
+            st = kwargs["status"]
+            if st in ("inactive", "terminated"):
+                kwargs["account_status"] = "inactive"
+                kwargs["app_status"] = "blocked"
+            elif st == "active":
+                kwargs["account_status"] = "active"
+                kwargs["app_status"] = "active"
+
         updated = await self.employee_repo.update(employee_id, **kwargs)
-        return {"id": updated.id, "message": "Employee updated successfully"}
+        return {"id": updated.id, "message": "Empleado actualizado correctamente"}
+
+    async def update_employee_status(self, employee_id: str, new_status: str, reason: str | None = None, db: any = None) -> dict:
+        employee = await self.employee_repo.get_by_id(employee_id)
+        if not employee:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empleado no encontrado")
+
+        account_st = "active" if new_status == "active" else "inactive"
+        app_st = "active" if new_status == "active" else "blocked"
+
+        await self.employee_repo.update(
+            employee_id,
+            status=new_status,
+            account_status=account_st,
+            app_status=app_st,
+        )
+
+        if db and employee.username:
+            from app.shared.database.models_auth import User
+            from sqlalchemy import update
+            await db.execute(
+                update(User).where(User.username == employee.username).values(is_active=(new_status == "active"))
+            )
+            await db.commit()
+
+        status_label = "Activo" if new_status == "active" else "Inactivo" if new_status == "inactive" else "Retirado"
+        return {
+            "id": employee_id,
+            "status": new_status,
+            "account_status": account_st,
+            "message": f"Estado del empleado actualizado a '{status_label}' exitosamente."
+        }
 
     async def delete_employee(self, employee_id: str, db: any = None) -> dict:
         employee = await self.employee_repo.get_by_id(employee_id)
@@ -98,7 +155,7 @@ class EmployeeService:
                     detail=f"No se puede eliminar el empleado '{employee.first_name} {employee.last_name}' porque tiene {total_movements} movimientos históricos registrados (asistencias, turnos, contratos o nómina) necesarios para informes. Le sugerimos modificar su información o cambiar su estado a 'Inactivo'."
                 )
 
-        await self.employee_repo.update(employee_id, is_deleted=True, status="terminated")
+        await self.employee_repo.update(employee_id, is_deleted=True, status="terminated", account_status="inactive", app_status="blocked")
         return {"message": "Empleado eliminado correctamente"}
 
     async def list_employees(
@@ -132,6 +189,8 @@ class EmployeeService:
                     "phone": e.phone,
                     "status": e.status,
                     "photo_url": e.photo_url,
+                    "branch_id": e.branch_id,
+                    "branch_name": e.branch.name if getattr(e, "branch", None) else None,
                     "department_id": e.department_id,
                     "company_id": e.company_id,
                     "has_access": bool(e.username),

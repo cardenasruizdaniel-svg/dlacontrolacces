@@ -166,7 +166,7 @@ export default function SettingsPage() {
     setIsWiping(true);
     try {
       await api.post("/system-config/wipe", { modules: modulesToWipe });
-      showToast("success", "Datos borrados exitosamente.");
+      showToast("success", "Datos borrados exitosamente. Reiniciando vista...");
       setWipeDialogOpen(false);
       setWipeConfirmText("");
       setWipeModules({
@@ -176,6 +176,9 @@ export default function SettingsPage() {
         clients: false,
         employees: false,
       });
+      setTimeout(() => {
+        window.location.reload();
+      }, 1200);
     } catch (err: any) {
       const msg = err?.response?.data?.detail || "Error al borrar la base de datos.";
       showToast("error", msg);

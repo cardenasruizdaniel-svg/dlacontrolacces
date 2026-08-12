@@ -135,6 +135,7 @@ class Employee(BaseModel):
     can_assign_georeference: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     company: Mapped["Company"] = relationship(back_populates="employees")
+    branch: Mapped["Branch | None"] = relationship()
     contracts: Mapped[list["Contract"]] = relationship(back_populates="employee", cascade="all, delete-orphan")
     dotaciones: Mapped[list["EmployeeDotacion"]] = relationship(back_populates="employee")
     job_position: Mapped["JobPosition | None"] = relationship()

@@ -61,17 +61,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (fullUser?.company_id) localStorage.setItem("company_id", fullUser.company_id);
       set({ user: fullUser, isAuthenticated: true, isLoading: false });
     } catch (err: any) {
-      // Only wipe session if server explicitly returned 401 Unauthorized
-      const status = err?.response?.status;
-      if (status === 401) {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-        set({ user: null, isAuthenticated: false, isLoading: false });
-      } else {
-        // Transient network glitch or server reboot — preserve state without wiping token
-        set({ isLoading: false });
-      }
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },
 }));
-

@@ -1,5 +1,7 @@
+import re
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.shared.database.models_hr import Employee, EmployeeDocument
 
@@ -10,7 +12,7 @@ class EmployeeRepository:
 
     async def get_by_id(self, employee_id: str) -> Employee | None:
         result = await self.db.execute(
-            select(Employee).where(Employee.id == employee_id, Employee.is_deleted == False)
+            select(Employee).options(selectinload(Employee.branch)).where(Employee.id == employee_id, Employee.is_deleted == False)
         )
         return result.scalar_one_or_none()
 
@@ -40,6 +42,50 @@ class EmployeeRepository:
         self.db.add(employee)
         await self.db.flush()
         return employee
+
+    async def get_next_code(self) -> str:
+        """Compute the next sequential EMP-XXX code.
+
+        Scans all existing codes that match the pattern EMP-<digits>,
+        takes the highest number found, and returns EMP-<max+1> with
+        at least 3 zero-padded digits (EMP-001, EMP-002 … EMP-999, EMP-1000…).
+        """
+        result = await self.db.execute(
+            select(Employee.code).where(Employee.is_deleted == False)
+        )
+        codes = result.scalars().all()
+        max_num = 0
+        pattern = re.compile(r'^EMP-(\d+)$', re.IGNORECASE)
+        for code in codes:
+            if code:
+                m = pattern.match(str(code).strip())
+                if m:
+                    num = int(m.group(1))
+                    if num > max_num:
+                        max_num = num
+        next_num = max_num + 1
+        # Zero-pad to at least 3 digits
+        return f"EMP-{next_num:03d}"
+
+    async def resequence_all_codes(self) -> int:
+        """Renumber ALL non-deleted employees in creation order.
+
+        Assigns EMP-001, EMP-002, … preserving chronological order
+        (oldest employee = EMP-001).  Returns the count of employees updated.
+        """
+        result = await self.db.execute(
+            select(Employee)
+            .where(Employee.is_deleted == False)
+            .order_by(Employee.created_at.asc(), Employee.id.asc())
+        )
+        employees = list(result.scalars().all())
+        for idx, emp in enumerate(employees, start=1):
+            new_code = f"EMP-{idx:03d}"
+            await self.db.execute(
+                update(Employee).where(Employee.id == emp.id).values(code=new_code)
+            )
+        await self.db.flush()
+        return len(employees)
 
     async def update(self, employee_id: str, **kwargs: dict) -> Employee | None:
         await self.db.execute(
@@ -91,15 +137,18 @@ class EmployeeRepository:
                 query = query.where(search_filter)
                 count_query = count_query.where(search_filter)
 
-        total_result = await self.db.execute(count_query)
-        total = total_result.scalar() or 0
-
-        query = query.order_by(
+        query = query.options(selectinload(Employee.branch)).order_by(
             func.lower(Employee.first_name).asc(),
             func.lower(Employee.last_name).asc()
         ).offset(skip).limit(limit)
-        result = await self.db.execute(query)
-        return list(result.scalars().all()), total
+
+        import asyncio
+        total_result, items_result = await asyncio.gather(
+            self.db.execute(count_query),
+            self.db.execute(query),
+        )
+        total = total_result.scalar() or 0
+        return list(items_result.scalars().all()), total
 
     async def count_by_company(self, company_id: str) -> int:
         result = await self.db.execute(

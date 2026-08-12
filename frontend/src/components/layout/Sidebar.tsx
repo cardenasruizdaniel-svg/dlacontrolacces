@@ -18,7 +18,8 @@ const navItems = [
   { label: "Gestión de Empleados", href: "/employees", icon: Users, module: "employees", adminOnly: false },
   { label: "Contratos Laborales", href: "/contracts", icon: FileText, module: "contracts", adminOnly: false },
   { label: "Nómina y Liquidación", href: "/payroll", icon: DollarSign, module: "payroll", adminOnly: false },
-  { label: "Clientes y Sedes", href: "/clients", icon: Building2, module: "clients", adminOnly: false },
+  { label: "Clientes y Cuentas", href: "/clients", icon: Briefcase, module: "clients", adminOnly: false },
+  { label: "Sedes y Subsedes", href: "/branches", icon: Building2, module: "branches", adminOnly: false },
   { label: "Programación de Turnos", href: "/scheduling", icon: Calendar, module: "scheduling", adminOnly: false },
   { label: "Geolocalización GPS", href: "/geolocation", icon: MapPin, module: "geolocation", adminOnly: false },
   { label: "Control de Acceso", href: "/access-control", icon: Shield, module: "access_control", adminOnly: false },
@@ -44,6 +45,7 @@ export default function Sidebar() {
   else if (typeof u?.role === "object" && u?.role !== null) roleName = (u.role?.name || u.role?.display_name || "").toLowerCase();
   if (!roleName && u?.role_name) roleName = String(u.role_name).toLowerCase();
 
+  const isSuperAdmin = Boolean(u?.is_superuser) || ["superadmin", "super admin", "super_admin"].includes(roleName);
   const isAdmin = Boolean(u?.is_superuser) || ["admin", "administrador", "gerencia", "super admin", "superadmin"].includes(roleName);
   const userPerms: string[] = Array.isArray(u?.permissions) ? u.permissions : [];
   const hasWildcard = userPerms.includes("*") || isAdmin;
@@ -112,7 +114,7 @@ export default function Sidebar() {
             </Link>
           );
         })}
-        {isAdmin && (
+        {isSuperAdmin && (
           <div className="pt-2 space-y-1.5">
             <Link
               href="/mobile"
