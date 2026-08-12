@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Plus, Search, Pencil, Trash2, Eye, AlertCircle, CheckCircle2, Download, Upload, FileText } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Eye, AlertCircle, CheckCircle2, Download, Upload, FileText, FileSpreadsheet } from "lucide-react";
+import * as XLSX from "xlsx";
 
 // Complete official dataset of Colombian Departments and All Municipalities
 const DEFAULT_DEPARTMENTS = [
@@ -611,28 +612,83 @@ export default function EmployeesPage() {
     setImportFileName(file.name);
     setImportResult(null);
 
+    const isExcel = file.name.endsWith(".xlsx") || file.name.endsWith(".xls");
     const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = evt.target?.result as string;
-      const lines = text.split(/\r\n|\n/).filter((l) => l.trim().length > 0);
-      if (lines.length < 2) {
-        showToast("error", "El archivo CSV debe contener al menos la fila de encabezados y una fila de datos");
-        return;
-      }
-      const headers = lines[0].split(",").map((h) => h.trim().replace(/^["']|["']$/g, ""));
-      const parsed: any[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(",").map((c) => c.trim().replace(/^["']|["']$/g, ""));
-        if (cols.length < 2) continue;
-        const obj: any = {};
-        for (let j = 0; j < headers.length; j++) {
-          obj[headers[j]] = cols[j] || "";
+
+    if (isExcel) {
+      reader.onload = (evt) => {
+        try {
+          const data = new Uint8Array(evt.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: "array" });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+          if (rawRows.length === 0) {
+            showToast("error", "El archivo Excel no contiene filas de datos.");
+            return;
+          }
+
+          const normalized = rawRows.map((row) => {
+            const clean: any = {};
+            for (const [key, val] of Object.entries(row)) {
+              const k = key.trim().toLowerCase();
+              if (k.includes("code") || k.includes("código") || k.includes("codigo")) clean["code"] = String(val).trim();
+              else if (k.includes("document_type") || k.includes("tipo doc") || k.includes("tipo_doc")) clean["document_type"] = String(val).trim();
+              else if (k.includes("document_number") || k.includes("documento") || k.includes("cédula") || k.includes("cedula")) clean["document_number"] = String(val).trim();
+              else if (k.includes("first_name") || k.includes("primer nombre") || k.includes("nombre")) clean["first_name"] = String(val).trim();
+              else if (k.includes("last_name") || k.includes("primer apellido") || k.includes("apellido")) clean["last_name"] = String(val).trim();
+              else if (k.includes("email") || k.includes("correo")) clean["email"] = String(val).trim();
+              else if (k.includes("mobile") || k.includes("celular")) clean["mobile"] = String(val).trim();
+              else if (k.includes("phone") || k.includes("teléfono") || k.includes("telefono")) clean["phone"] = String(val).trim();
+              else if (k.includes("job_position") || k.includes("cargo") || k.includes("puesto")) clean["job_position"] = String(val).trim();
+              else if (k.includes("department") || k.includes("departamento") || k.includes("área") || k.includes("area")) clean["department"] = String(val).trim();
+              else if (k.includes("eps")) clean["eps"] = String(val).trim();
+              else if (k.includes("arl")) clean["arl"] = String(val).trim();
+              else if (k.includes("afp") || k.includes("pension")) clean["afp"] = String(val).trim();
+              else if (k.includes("status") || k.includes("estado")) clean["status"] = String(val).trim();
+              else clean[key.trim()] = String(val).trim();
+            }
+            return clean;
+          });
+
+          setImportRows(normalized);
+          showToast("success", `Archivo Excel procesado: ${normalized.length} registros listos.`);
+        } catch (err: any) {
+          showToast("error", "Error al leer el archivo Excel: " + err.message);
         }
-        parsed.push(obj);
-      }
-      setImportRows(parsed);
-    };
-    reader.readAsText(file);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = (evt) => {
+        try {
+          const text = evt.target?.result as string;
+          const workbook = XLSX.read(text, { type: "string" });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+          if (rawRows.length === 0) {
+            showToast("error", "El archivo CSV no contiene filas de datos.");
+            return;
+          }
+
+          const normalized = rawRows.map((row) => {
+            const clean: any = {};
+            for (const [key, val] of Object.entries(row)) {
+              clean[key.trim()] = String(val).trim();
+            }
+            return clean;
+          });
+
+          setImportRows(normalized);
+          showToast("success", `Archivo CSV procesado: ${normalized.length} registros listos.`);
+        } catch (err: any) {
+          showToast("error", "Error al leer el archivo CSV: " + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
   };
 
   const handleConfirmImport = async () => {
@@ -657,13 +713,14 @@ export default function EmployeesPage() {
   const handleDownloadEmployeesTemplate = async () => {
     try {
       const res = await api.get("/employees/template", { responseType: "blob" });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", "plantilla_empleados.csv");
+      link.setAttribute("download", "plantilla_empleados_deacontrol.xlsx");
       document.body.appendChild(link);
       link.click();
       link.remove();
+      showToast("success", "Plantilla Excel descargada correctamente");
     } catch (err) {
       showToast("error", "Error al descargar plantilla");
     }
@@ -899,10 +956,10 @@ export default function EmployeesPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" onClick={handleDownloadEmployeesTemplate} className="gap-1.5 text-xs font-semibold">
-            <Download className="h-4 w-4 text-blue-600" /> Plantilla CSV
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Plantilla Excel (.xlsx)
           </Button>
           <Button variant="outline" onClick={() => { setImportModalOpen(true); setImportRows([]); setImportResult(null); setImportFileName(""); }} className="gap-1.5 text-xs font-semibold">
-            <Upload className="h-4 w-4 text-cyan-600" /> Carga Masiva
+            <Upload className="h-4 w-4 text-blue-600" /> Carga Masiva (Excel/CSV)
           </Button>
           <Button onClick={openCreate} className="gap-1 text-xs font-bold">
             <Plus className="h-4 w-4" /> Nuevo Empleado
@@ -1071,31 +1128,35 @@ export default function EmployeesPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold flex items-center gap-2">
-              <Upload className="h-5 w-5 text-blue-600" /> Carga Masiva de Empleados (CSV / Excel)
+              <FileSpreadsheet className="h-5 w-5 text-emerald-600" /> Carga Masiva de Empleados en Excel / CSV
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2 text-xs">
-            <div className="p-4 border-2 border-dashed rounded-xl bg-slate-50 text-center space-y-2">
-              <FileText className="h-8 w-8 text-slate-400 mx-auto" />
-              <p className="font-semibold text-slate-700">Selecciona el archivo CSV con la lista de empleados</p>
-              <p className="text-[11px] text-slate-500">Asegúrate de usar la plantilla oficial con encabezados compatibles.</p>
+            <div className="p-5 border-2 border-dashed rounded-xl bg-slate-50 text-center space-y-3">
+              <FileSpreadsheet className="h-10 w-10 text-emerald-600 mx-auto" />
+              <div>
+                <p className="font-bold text-sm text-slate-800">Descarga la tabla de Excel oficial y complétala con tus empleados</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">El archivo viene estructurado en columnas con ejemplos listos para llenar y subir directamente.</p>
+              </div>
 
-              <div className="pt-2 flex justify-center gap-2 flex-wrap">
-                <Button variant="outline" size="sm" onClick={handleDownloadEmployeesTemplate} className="gap-1 text-xs">
-                  <Download className="h-3.5 w-3.5" /> Descargar Plantilla CSV
+              <div className="pt-1 flex justify-center gap-3 flex-wrap">
+                <Button variant="outline" size="sm" onClick={handleDownloadEmployeesTemplate} className="gap-1.5 text-xs font-semibold border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+                  <Download className="h-4 w-4 text-emerald-600" /> Descargar Plantilla Excel (.xlsx)
                 </Button>
 
                 <label className="cursor-pointer">
-                  <span className="inline-flex items-center justify-center px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs gap-1 shadow">
-                    <Upload className="h-3.5 w-3.5" /> Seleccionar Archivo CSV
+                  <span className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs gap-1.5 shadow">
+                    <Upload className="h-4 w-4" /> Seleccionar Archivo Excel o CSV
                   </span>
-                  <input type="file" accept=".csv,text/csv" onChange={handleFileUpload} className="hidden" />
+                  <input type="file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleFileUpload} className="hidden" />
                 </label>
               </div>
 
               {importFileName && (
-                <p className="text-xs font-mono font-bold text-blue-600 pt-1">Archivo cargado: {importFileName} ({importRows.length} filas detectadas)</p>
+                <div className="p-2 rounded-md bg-blue-50 border border-blue-200">
+                  <p className="text-xs font-semibold text-blue-800">📊 Archivo cargado: <span className="font-mono">{importFileName}</span> ({importRows.length} registros listos)</p>
+                </div>
               )}
             </div>
 

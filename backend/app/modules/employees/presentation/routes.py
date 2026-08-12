@@ -48,13 +48,68 @@ async def list_employees(
     return EmployeeListResponse(**result.__dict__)
 
 
+import io
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
 @router.get("/template")
 async def download_employees_template():
-    content = "code,document_type,document_number,first_name,last_name,email,phone,mobile,job_position,department,eps,arl,afp,status\nEMP-1001,CC,1020304050,Carlos,Pérez,carlos.perez@ejemplo.com,3001234567,3001234567,Operador de Campo,Operaciones,EPS Sura,Positiva ARL,Porvenir,active\n"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Plantilla Empleados"
+
+    # Header columns
+    headers = [
+        "code", "document_type", "document_number", "first_name", "last_name",
+        "email", "phone", "mobile", "job_position", "department", "eps", "arl", "afp", "status"
+    ]
+    
+    header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid") # Dark Slate / Navy
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    border_thin = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='thin', color='CBD5E1'),
+        bottom=Side(style='thin', color='CBD5E1')
+    )
+    center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center_align
+        cell.border = border_thin
+
+    # Sample rows for guidance
+    sample_rows = [
+        ["EMP-1001", "CC", "1020304050", "Carlos", "Pérez", "carlos.perez@empresa.com", "3001234567", "3001234567", "Operador de Campo", "Operaciones", "EPS Sura", "Positiva ARL", "Porvenir", "active"],
+        ["EMP-1002", "CC", "1030405060", "María", "Gómez", "maria.gomez@empresa.com", "3109876543", "3109876543", "Supervisora de Sede", "Operaciones", "Sanitas", "SURA ARL", "Protección", "active"],
+    ]
+
+    for row_data in sample_rows:
+        ws.append(row_data)
+        for cell in ws[ws.max_row]:
+            cell.border = border_thin
+            cell.alignment = Alignment(vertical="center")
+
+    # Auto-adjust column widths
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 15)
+
+    ws.row_dimensions[1].height = 28
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
     return Response(
-        content=content,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=plantilla_empleados_dla.csv"},
+        content=output.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=plantilla_empleados_deacontrol.xlsx"},
     )
 
 

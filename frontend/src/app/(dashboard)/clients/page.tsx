@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, MapPin, Navigation, Loader2, CheckCircle2, AlertCircle, Eye, Globe, Download, Upload, FileText } from "lucide-react";
+import { Plus, Search, MapPin, Navigation, Loader2, CheckCircle2, AlertCircle, Eye, Globe, Download, Upload, FileText, FileSpreadsheet } from "lucide-react";
+import * as XLSX from "xlsx";
 
 // Official datasets for Colombia Departments & Municipalities
 const DEFAULT_DEPARTMENTS = [
@@ -109,28 +110,83 @@ export default function ClientsPage() {
     setImportFileName(file.name);
     setImportResult(null);
 
+    const isExcel = file.name.endsWith(".xlsx") || file.name.endsWith(".xls");
     const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = evt.target?.result as string;
-      const lines = text.split(/\r\n|\n/).filter((l) => l.trim().length > 0);
-      if (lines.length < 2) {
-        showToast("error", "El archivo CSV debe contener al menos la fila de encabezados y una fila de datos");
-        return;
-      }
-      const headers = lines[0].split(",").map((h) => h.trim().replace(/^["']|["']$/g, ""));
-      const parsed: any[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(",").map((c) => c.trim().replace(/^["']|["']$/g, ""));
-        if (cols.length < 1) continue;
-        const obj: any = {};
-        for (let j = 0; j < headers.length; j++) {
-          obj[headers[j]] = cols[j] || "";
+
+    if (isExcel) {
+      reader.onload = (evt) => {
+        try {
+          const data = new Uint8Array(evt.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: "array" });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+          if (rawRows.length === 0) {
+            showToast("error", "El archivo Excel no contiene filas de datos.");
+            return;
+          }
+
+          const normalized = rawRows.map((row) => {
+            const clean: any = {};
+            for (const [key, val] of Object.entries(row)) {
+              const k = key.trim().toLowerCase();
+              if (k.includes("nit") || k.includes("identificaci")) clean["nit"] = String(val).trim();
+              else if (k.includes("name") || k.includes("nombre") || k.includes("razón social") || k.includes("razon social")) clean["name"] = String(val).trim();
+              else if (k.includes("trade_name") || k.includes("nombre comercial") || k.includes("comercial")) clean["trade_name"] = String(val).trim();
+              else if (k.includes("client_type") || k.includes("tipo")) clean["client_type"] = String(val).trim();
+              else if (k.includes("email") || k.includes("correo")) clean["email"] = String(val).trim();
+              else if (k.includes("mobile") || k.includes("celular")) clean["mobile"] = String(val).trim();
+              else if (k.includes("phone") || k.includes("teléfono") || k.includes("telefono")) clean["phone"] = String(val).trim();
+              else if (k.includes("address") || k.includes("dirección") || k.includes("direccion")) clean["address"] = String(val).trim();
+              else if (k.includes("department") || k.includes("departamento")) clean["department"] = String(val).trim();
+              else if (k.includes("city") || k.includes("ciudad") || k.includes("municipio")) clean["city"] = String(val).trim();
+              else if (k.includes("latitude") || k.includes("latitud")) clean["latitude"] = val;
+              else if (k.includes("longitude") || k.includes("longitud")) clean["longitude"] = val;
+              else if (k.includes("geofence_radius") || k.includes("radio")) clean["geofence_radius"] = val;
+              else if (k.includes("notes") || k.includes("notas") || k.includes("observaci")) clean["notes"] = String(val).trim();
+              else clean[key.trim()] = String(val).trim();
+            }
+            return clean;
+          });
+
+          setImportRows(normalized);
+          showToast("success", `Archivo Excel procesado: ${normalized.length} registros listos.`);
+        } catch (err: any) {
+          showToast("error", "Error al leer el archivo Excel: " + err.message);
         }
-        parsed.push(obj);
-      }
-      setImportRows(parsed);
-    };
-    reader.readAsText(file);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = (evt) => {
+        try {
+          const text = evt.target?.result as string;
+          const workbook = XLSX.read(text, { type: "string" });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+          if (rawRows.length === 0) {
+            showToast("error", "El archivo CSV no contiene filas de datos.");
+            return;
+          }
+
+          const normalized = rawRows.map((row) => {
+            const clean: any = {};
+            for (const [key, val] of Object.entries(row)) {
+              clean[key.trim()] = String(val).trim();
+            }
+            return clean;
+          });
+
+          setImportRows(normalized);
+          showToast("success", `Archivo CSV procesado: ${normalized.length} registros listos.`);
+        } catch (err: any) {
+          showToast("error", "Error al leer el archivo CSV: " + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
   };
 
   const handleConfirmImport = async () => {
@@ -154,13 +210,14 @@ export default function ClientsPage() {
   const handleDownloadClientsTemplate = async () => {
     try {
       const res = await api.get("/clients/template", { responseType: "blob" });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", "plantilla_clientes.csv");
+      link.setAttribute("download", "plantilla_clientes_sedes_deacontrol.xlsx");
       document.body.appendChild(link);
       link.click();
       link.remove();
+      showToast("success", "Plantilla Excel descargada correctamente");
     } catch (err) {
       showToast("error", "Error al descargar plantilla");
     }
@@ -368,10 +425,10 @@ export default function ClientsPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" onClick={handleDownloadClientsTemplate} className="gap-1.5 text-xs font-semibold">
-            <Download className="h-4 w-4 text-blue-600" /> Plantilla CSV
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Plantilla Excel (.xlsx)
           </Button>
           <Button variant="outline" onClick={() => { setImportModalOpen(true); setImportRows([]); setImportResult(null); setImportFileName(""); }} className="gap-1.5 text-xs font-semibold">
-            <Upload className="h-4 w-4 text-cyan-600" /> Carga Masiva
+            <Upload className="h-4 w-4 text-blue-600" /> Carga Masiva (Excel/CSV)
           </Button>
           <Button onClick={() => { setEditingClient(null); setForm({ ...defaultForm, company_id: companyId }); setShowCreate(true); }} className="gap-1 text-xs font-bold">
             <Plus className="h-4 w-4" /> Nuevo Cliente
@@ -587,31 +644,35 @@ export default function ClientsPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold flex items-center gap-2">
-              <Upload className="h-5 w-5 text-blue-600" /> Carga Masiva de Clientes y Sedes (CSV / Excel)
+              <FileSpreadsheet className="h-5 w-5 text-emerald-600" /> Carga Masiva de Clientes y Sedes en Excel / CSV
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2 text-xs">
-            <div className="p-4 border-2 border-dashed rounded-xl bg-slate-50 text-center space-y-2">
-              <FileText className="h-8 w-8 text-slate-400 mx-auto" />
-              <p className="font-semibold text-slate-700">Selecciona el archivo CSV con la lista de clientes o sedes</p>
-              <p className="text-[11px] text-slate-500">Asegúrate de usar la plantilla oficial con encabezados compatibles.</p>
+            <div className="p-5 border-2 border-dashed rounded-xl bg-slate-50 text-center space-y-3">
+              <FileSpreadsheet className="h-10 w-10 text-emerald-600 mx-auto" />
+              <div>
+                <p className="font-bold text-sm text-slate-800">Descarga la tabla de Excel oficial y complétala con tus clientes o sedes</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">El archivo viene estructurado en columnas con ejemplos listos para llenar y subir directamente.</p>
+              </div>
 
-              <div className="pt-2 flex justify-center gap-2 flex-wrap">
-                <Button variant="outline" size="sm" onClick={handleDownloadClientsTemplate} className="gap-1 text-xs">
-                  <Download className="h-3.5 w-3.5" /> Descargar Plantilla CSV
+              <div className="pt-1 flex justify-center gap-3 flex-wrap">
+                <Button variant="outline" size="sm" onClick={handleDownloadClientsTemplate} className="gap-1.5 text-xs font-semibold border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+                  <Download className="h-4 w-4 text-emerald-600" /> Descargar Plantilla Excel (.xlsx)
                 </Button>
 
                 <label className="cursor-pointer">
-                  <span className="inline-flex items-center justify-center px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs gap-1 shadow">
-                    <Upload className="h-3.5 w-3.5" /> Seleccionar Archivo CSV
+                  <span className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs gap-1.5 shadow">
+                    <Upload className="h-4 w-4" /> Seleccionar Archivo Excel o CSV
                   </span>
-                  <input type="file" accept=".csv,text/csv" onChange={handleFileUpload} className="hidden" />
+                  <input type="file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleFileUpload} className="hidden" />
                 </label>
               </div>
 
               {importFileName && (
-                <p className="text-xs font-mono font-bold text-blue-600 pt-1">Archivo cargado: {importFileName} ({importRows.length} filas detectadas)</p>
+                <div className="p-2 rounded-md bg-blue-50 border border-blue-200">
+                  <p className="text-xs font-semibold text-blue-800">📊 Archivo cargado: <span className="font-mono">{importFileName}</span> ({importRows.length} registros listos)</p>
+                </div>
               )}
             </div>
 
