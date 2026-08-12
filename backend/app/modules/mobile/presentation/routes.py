@@ -178,6 +178,8 @@ async def register_reference_photo(
         raise HTTPException(status_code=400, detail=f"No se pudo detectar el rostro válido en la foto: {str(e)}")
 
     emp.photo_url = body.photo_base64
+    emp.facial_photo_url = body.photo_base64
+    emp.facial_photo_verified = True
     await db.commit()
     await db.refresh(emp)
     return {

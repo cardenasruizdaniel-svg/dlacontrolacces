@@ -79,8 +79,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         import app.shared.database.models_hr    # load models
         import app.modules.system_config.models # load system_config model
         import app.modules.attendance.models    # load attendance model
+        from sqlalchemy import text
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            try:
+                await conn.execute(text("ALTER TABLE employees ALTER COLUMN photo_url TYPE TEXT;"))
+                await conn.execute(text("ALTER TABLE employees ALTER COLUMN facial_photo_url TYPE TEXT;"))
+            except Exception as alter_err:
+                logger.info(f"Column type alter check: {alter_err}")
         logger.info("Database tables initialized successfully.")
     except Exception as e:
         logger.error(f"DB table creation error: {e}")
