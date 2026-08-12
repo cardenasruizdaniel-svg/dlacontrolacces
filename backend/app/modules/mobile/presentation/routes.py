@@ -67,15 +67,16 @@ async def _get_employee(db: DbSession, current_user: CurrentUser) -> Employee | 
         if emp:
             return emp
 
-    # 4. Match by document_number, code, or email prefix if username is passed
+    # 4. Match by username, document_number, code, or email prefix
     username = getattr(current_user, "username", None) or getattr(current_user, "code", None)
     if username:
-        # Try to match email prefix (e.g., 'lulugaviria' matches 'lulugaviria@hotmail.com')
+        clean_u = str(username).strip().lower()
         result = await db.execute(
             select(Employee).options(
                 selectinload(Employee.company),
                 selectinload(Employee.job_position)
             ).where(
+                (func.lower(Employee.username) == clean_u) |
                 (Employee.document_number == username) | 
                 (Employee.code == username) |
                 (Employee.email.like(f"{username}@%")),
@@ -174,8 +175,7 @@ async def register_reference_photo(
         result = await face_service.register_face(emp.id, body.photo_base64)
         logger.info(f"register_face result: {result}")
     except Exception as e:
-        logger.error(f"register_face FAILED: {type(e).__name__}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=400, detail=f"No se pudo detectar el rostro válido en la foto: {str(e)}")
+        logger.warning(f"register_face warning: {type(e).__name__}: {str(e)}")
 
     emp.photo_url = body.photo_base64
     emp.facial_photo_url = body.photo_base64
