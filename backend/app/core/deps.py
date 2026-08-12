@@ -82,8 +82,19 @@ async def get_current_user(
 async def get_current_active_superuser(
     current_user=Depends(get_current_user),
 ):
-    if not getattr(current_user, "is_superuser", False):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Se requieren permisos de superadministrador")
+    role = getattr(current_user, "role", None)
+    role_name = (
+        getattr(role, "name", "") 
+        or getattr(role, "display_name", "") 
+        or getattr(current_user, "role_name", "")
+        or ""
+    ).lower()
+    is_super = (
+        getattr(current_user, "is_superuser", False) 
+        or role_name in ["admin", "super admin", "superadmin", "administrador", "gerencia"]
+    )
+    if not is_super:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Se requieren permisos de administrador")
     return current_user
 
 def require_permission(module: str, action: str) -> Callable:

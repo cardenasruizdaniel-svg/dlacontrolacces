@@ -67,7 +67,32 @@ class IAMService:
 
     # --- Permissions ---
     async def list_permissions(self):
-        return await self.perm_repo.list_all()
+        perms = await self.perm_repo.list_all()
+        if not perms:
+            import uuid
+            from app.shared.database.models_auth import Permission
+            std_modules = [
+                "dashboard", "employees", "contracts", "payroll", "clients",
+                "scheduling", "geolocation", "access_control", "facial_recognition",
+                "roles", "permissions", "reports", "ai_assistant", "settings",
+                "users", "branches", "departments", "cost_centers", "dotaciones"
+            ]
+            std_actions = ["view", "create", "update", "delete", "export", "import", "approve", "manage"]
+            for mod in std_modules:
+                for act in std_actions:
+                    p = Permission(
+                        id=str(uuid.uuid4()),
+                        module=mod,
+                        action=act,
+                        display_name=f"{act.capitalize()} {mod.capitalize()}",
+                        description=f"Permiso para {act} en {mod}",
+                        is_active=True,
+                        is_deleted=False,
+                    )
+                    self.perm_repo.db.add(p)
+            await self.perm_repo.db.flush()
+            perms = await self.perm_repo.list_all()
+        return perms
 
     async def get_permission_matrix(self):
         perms = await self.perm_repo.list_all()

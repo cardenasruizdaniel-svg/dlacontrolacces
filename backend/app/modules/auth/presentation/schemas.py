@@ -50,6 +50,7 @@ class UserResponse(BaseModel):
     role: dict | str | None = None
     role_name: str | None = None
     platform_access: str | None = "both"
+    permissions: list[str] = []
 
 
 class UserListResponse(BaseModel):

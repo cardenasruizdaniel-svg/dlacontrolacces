@@ -166,11 +166,8 @@ function LoginContent() {
 
     // 1. Web-only users NEVER get prompted for face setup -> go straight to Dashboard
     if (platformAccess === "web") {
-      if (redirectParam && !redirectParam.includes("attendance") && !redirectParam.includes("mobile")) {
-        router.push(redirectParam);
-        return;
-      }
-      router.push("/dashboard");
+      const target = redirectParam && !redirectParam.includes("attendance") && !redirectParam.includes("mobile") ? redirectParam : "/dashboard";
+      window.location.href = target;
       return;
     }
 
@@ -191,7 +188,7 @@ function LoginContent() {
     }
 
     if (platformAccess === "mobile") {
-      router.push("/mobile");
+      window.location.href = "/mobile";
       return;
     }
 
@@ -203,11 +200,11 @@ function LoginContent() {
       redirectParam !== "/mobile" &&
       redirectParam !== "%2Fmobile"
     ) {
-      router.push(redirectParam);
+      window.location.href = redirectParam;
       return;
     }
 
-    router.push("/dashboard");
+    window.location.href = "/dashboard";
   };
 
   const handleSaveFirstLoginPassword = async (e: React.FormEvent) => {

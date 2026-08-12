@@ -111,7 +111,7 @@ async def logout(current_user: CurrentUser, db: DbSession) -> dict:
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: CurrentUser) -> UserResponse:
+async def get_me(current_user: CurrentUser, db: DbSession) -> UserResponse:
     role_obj = getattr(current_user, "role", None)
     role_name = getattr(role_obj, "name", None) or getattr(role_obj, "display_name", None)
     if not role_name and getattr(current_user, "is_superuser", False):
@@ -121,19 +121,41 @@ async def get_me(current_user: CurrentUser) -> UserResponse:
     last_name = getattr(current_user, "last_name", "") or ""
     full_name = getattr(current_user, "full_name", None) or f"{first_name} {last_name}".strip() or "Usuario"
 
+    permissions = []
+    is_super = getattr(current_user, "is_superuser", False) or (role_name and role_name.lower() in ("admin", "super admin", "superadmin", "administrador", "gerencia"))
+    if is_super:
+        permissions = ["*"]
+    elif getattr(current_user, "role_id", None):
+        try:
+            from app.shared.database.models_auth import Permission, RolePermission
+            from sqlalchemy import select
+            perm_res = await db.execute(
+                select(Permission.module, Permission.action)
+                .join(RolePermission, RolePermission.permission_id == Permission.id)
+                .where(RolePermission.role_id == current_user.role_id, Permission.is_deleted == False)
+            )
+            perms_tuples = perm_res.all()
+            for mod, act in perms_tuples:
+                permissions.append(f"{mod}:{act}")
+                if mod not in permissions:
+                    permissions.append(mod)
+        except Exception:
+            pass
+
     return UserResponse(
         id=current_user.id,
         email=current_user.email,
         username=getattr(current_user, "username", current_user.email),
         full_name=full_name,
         is_active=getattr(current_user, "status", "active") == "active" or getattr(current_user, "is_active", True),
-        is_superuser=getattr(current_user, "is_superuser", False),
+        is_superuser=bool(getattr(current_user, "is_superuser", False)),
         mfa_enabled=getattr(current_user, "mfa_enabled", False),
         company_id=getattr(current_user, "company_id", None),
         role_id=getattr(current_user, "role_id", None),
         role={"name": role_name} if role_name else None,
         role_name=role_name,
         platform_access=platform_access,
+        permissions=permissions,
     )
 
 

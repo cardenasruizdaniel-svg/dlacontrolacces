@@ -29,7 +29,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       first_login: first_login !== undefined ? first_login : !user?.first_login_completed,
       force_password_change: force_password_change ?? user?.force_password_change ?? false,
     };
-    set({ user: userWithFlags, isAuthenticated: true });
+    set({ user: userWithFlags, isAuthenticated: true, isLoading: false });
     return userWithFlags;
   },
 
@@ -44,22 +44,33 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("company_id");
-    set({ user: null, isAuthenticated: false });
+    localStorage.removeItem("dla_face_registered");
+    set({ user: null, isAuthenticated: false, isLoading: false });
   },
 
   loadUser: async () => {
     try {
-      const token = localStorage.getItem("access_token");
-      if (!token) { set({ isLoading: false }); return; }
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      if (!token) { 
+        set({ user: null, isAuthenticated: false, isLoading: false }); 
+        return; 
+      }
       const res = await api.get("/auth/me");
       const fullUser = res.data as User;
       // Preserve company_id in localStorage for dashboard calls
       if (fullUser?.company_id) localStorage.setItem("company_id", fullUser.company_id);
       set({ user: fullUser, isAuthenticated: true, isLoading: false });
-    } catch {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      set({ user: null, isAuthenticated: false, isLoading: false });
+    } catch (err: any) {
+      // Only wipe session if server explicitly returned 401 Unauthorized
+      const status = err?.response?.status;
+      if (status === 401) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        set({ user: null, isAuthenticated: false, isLoading: false });
+      } else {
+        // Transient network glitch or server reboot — preserve state without wiping token
+        set({ isLoading: false });
+      }
     }
   },
 }));

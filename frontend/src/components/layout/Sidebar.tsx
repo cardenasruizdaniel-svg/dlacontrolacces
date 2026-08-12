@@ -14,20 +14,20 @@ import {
 import { useSystemConfig } from "@/lib/useSystemConfig";
 
 const navItems = [
-  { label: "Panel de Control", href: "/dashboard", icon: LayoutDashboard, adminOnly: false },
-  { label: "Gestión de Empleados", href: "/employees", icon: Users, adminOnly: true },
-  { label: "Contratos Laborales", href: "/contracts", icon: FileText, adminOnly: true },
-  { label: "Nómina y Liquidación", href: "/payroll", icon: DollarSign, adminOnly: true },
-  { label: "Clientes y Sedes", href: "/clients", icon: Building2, adminOnly: true },
-  { label: "Programación de Turnos", href: "/scheduling", icon: Calendar, adminOnly: true },
-  { label: "Geolocalización GPS", href: "/geolocation", icon: MapPin, adminOnly: false },
-  { label: "Control de Acceso", href: "/access-control", icon: Shield, adminOnly: false },
-  { label: "Matriz de Roles e IAM", href: "/iam/roles", icon: ShieldCheck, adminOnly: true },
-  { label: "Reconocimiento Facial", href: "/facial-recognition", icon: Camera, adminOnly: true },
-  { label: "Reportes y Auditoría", href: "/reports", icon: BarChart3, adminOnly: true },
-  { label: "Asistente IA", href: "/ai-assistant", icon: Bot, adminOnly: false },
-  { label: "Manual de Funcionamiento", href: "/help", icon: BookOpen, adminOnly: false },
-  { label: "Configuración", href: "/settings", icon: Settings, adminOnly: true },
+  { label: "Panel de Control", href: "/dashboard", icon: LayoutDashboard, module: "dashboard", adminOnly: false },
+  { label: "Gestión de Empleados", href: "/employees", icon: Users, module: "employees", adminOnly: false },
+  { label: "Contratos Laborales", href: "/contracts", icon: FileText, module: "contracts", adminOnly: false },
+  { label: "Nómina y Liquidación", href: "/payroll", icon: DollarSign, module: "payroll", adminOnly: false },
+  { label: "Clientes y Sedes", href: "/clients", icon: Building2, module: "clients", adminOnly: false },
+  { label: "Programación de Turnos", href: "/scheduling", icon: Calendar, module: "scheduling", adminOnly: false },
+  { label: "Geolocalización GPS", href: "/geolocation", icon: MapPin, module: "geolocation", adminOnly: false },
+  { label: "Control de Acceso", href: "/access-control", icon: Shield, module: "access_control", adminOnly: false },
+  { label: "Matriz de Roles e IAM", href: "/iam/roles", icon: ShieldCheck, module: "roles", adminOnly: true },
+  { label: "Reconocimiento Facial", href: "/facial-recognition", icon: Camera, module: "facial_recognition", adminOnly: true },
+  { label: "Reportes y Auditoría", href: "/reports", icon: BarChart3, module: "reports", adminOnly: false },
+  { label: "Asistente IA", href: "/ai-assistant", icon: Bot, module: "ai_assistant", adminOnly: false },
+  { label: "Manual de Funcionamiento", href: "/help", icon: BookOpen, module: "help", adminOnly: false },
+  { label: "Configuración", href: "/settings", icon: Settings, module: "settings", adminOnly: true },
 ];
 
 export default function Sidebar() {
@@ -45,8 +45,18 @@ export default function Sidebar() {
   if (!roleName && u?.role_name) roleName = String(u.role_name).toLowerCase();
 
   const isAdmin = Boolean(u?.is_superuser) || ["admin", "administrador", "gerencia", "super admin", "superadmin"].includes(roleName);
-  
-  const filteredNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
+  const userPerms: string[] = Array.isArray(u?.permissions) ? u.permissions : [];
+  const hasWildcard = userPerms.includes("*") || isAdmin;
+
+  const filteredNavItems = navItems.filter(item => {
+    if (hasWildcard) return true;
+    if (item.href === "/dashboard" || item.href === "/help") return true;
+    if (item.module) {
+      const mod = item.module.toLowerCase();
+      return userPerms.some(p => p === mod || p.startsWith(`${mod}:`));
+    }
+    return !item.adminOnly;
+  });
 
   const companyLogo = configs.find((c) => c.key === "COMPANY_LOGO")?.value;
   const companyName = configs.find((c) => c.key === "COMPANY_NAME")?.value || "DLA Redes y Seguridad";

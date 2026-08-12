@@ -18,6 +18,7 @@ export interface User {
   code?: string | null;
   first_login?: boolean;
   force_password_change?: boolean;
+  permissions?: string[];
 }
 
 export interface Employee {
