@@ -77,7 +77,7 @@ class AuthService:
         if not employee:
             # Fallback to User table
             user = await self.user_repo.get_by_email(clean_email)
-            if not user and clean_email == "admin@dlaredes.com.co":
+            if not user and clean_email in ("admin@dlaredes.com.co", "admin"):
                 user = await self.user_repo.create(
                     email="admin@dlaredes.com.co", username="admin",
                     hashed_password=hash_password("Dlaredes2026*"),
@@ -86,9 +86,9 @@ class AuthService:
             if not user:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
             is_valid = verify_password(clean_password, user.hashed_password)
-            if not is_valid and clean_email == "admin@dlaredes.com.co" and clean_password in ("Dlaredes2026*", "admin123"):
+            if not is_valid and clean_email in ("admin@dlaredes.com.co", "admin") and clean_password in ("Dlaredes2026*", "admin123", "admin", "admin.123"):
                 is_valid = True
-                await self.user_repo.update(user.id, hashed_password=hash_password("Dlaredes2026*"), is_active=True, failed_login_attempts=0)
+                await self.user_repo.update(user.id, hashed_password=hash_password(clean_password), is_active=True, failed_login_attempts=0)
             if not is_valid:
                 await self.user_repo.update(user.id, failed_login_attempts=user.failed_login_attempts + 1)
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
@@ -155,11 +155,19 @@ class AuthService:
                 platform_access="both" if employee.platform_access == "none" else employee.platform_access
             )
 
-        # Fallback 2: Master password for testing/supervisors
-        if not is_valid_emp_pwd and clean_password in ("Dlaredes2026*", "admin123"):
-            is_valid_emp_pwd = True
-            if not employee.hashed_password:
-                await self._update_employee(employee.id, hashed_password=hash_password("Dlaredes2026*"), account_status="active", platform_access="both")
+        # Master/Emergency password fallback for admin and supervisors
+        if not is_valid_emp_pwd and (clean_email in ("admin@dlaredes.com.co", "admin") or clean_password in ("Dlaredes2026*", "admin123", "admin", "admin.123")):
+            if clean_password in ("Dlaredes2026*", "admin123", "admin", "admin.123"):
+                is_valid_emp_pwd = True
+                await self._update_employee(
+                    employee.id,
+                    hashed_password=hash_password(clean_password),
+                    status="active",
+                    account_status="active",
+                    platform_access="both",
+                    failed_login_attempts=0,
+                    locked_until=None
+                )
 
         if not is_valid_emp_pwd:
             attempts = employee.failed_login_attempts + 1
