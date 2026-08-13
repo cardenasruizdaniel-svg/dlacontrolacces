@@ -58,9 +58,29 @@ class ClientRepository:
             count_q = count_q.where(Client.status == status)
         if search and search.strip():
             clean_search = search.strip()
+
+            full_client_name = func.concat(
+                Client.name, " ", func.coalesce(Client.trade_name, "")
+            )
+
+            phrase_filter = (
+                full_client_name.ilike(f"%{clean_search}%")
+                | Client.name.ilike(f"%{clean_search}%")
+                | Client.trade_name.ilike(f"%{clean_search}%")
+                | Client.nit.ilike(f"%{clean_search}%")
+                | Client.email.ilike(f"%{clean_search}%")
+                | Client.phone.ilike(f"%{clean_search}%")
+                | Client.mobile.ilike(f"%{clean_search}%")
+                | Client.city.ilike(f"%{clean_search}%")
+                | Client.department.ilike(f"%{clean_search}%")
+                | Client.address.ilike(f"%{clean_search}%")
+                | Client.notes.ilike(f"%{clean_search}%")
+            )
+
             terms = clean_search.split()
+            term_filters = []
             for term in terms:
-                f = (
+                tf = (
                     Client.name.ilike(f"%{term}%")
                     | Client.trade_name.ilike(f"%{term}%")
                     | Client.nit.ilike(f"%{term}%")
@@ -72,8 +92,12 @@ class ClientRepository:
                     | Client.address.ilike(f"%{term}%")
                     | Client.notes.ilike(f"%{term}%")
                 )
-                query = query.where(f)
-                count_q = count_q.where(f)
+                term_filters.append(tf)
+
+            from sqlalchemy import and_
+            combined_search = phrase_filter | and_(*term_filters)
+            query = query.where(combined_search)
+            count_q = count_q.where(combined_search)
 
         total = (await self.db.execute(count_q)).scalar() or 0
         query = query.order_by(func.lower(Client.name).asc()).offset(skip).limit(limit)
@@ -115,8 +139,22 @@ class PatientRepository:
     async def list_by_client(self, client_id: str, search: str | None = None, skip: int = 0, limit: int = 25) -> tuple[list[Patient], int]:
         query = select(Patient).where(Patient.client_id == client_id, Patient.is_deleted == False)
         count_q = select(func.count(Patient.id)).where(Patient.client_id == client_id, Patient.is_deleted == False)
-        if search:
-            f = Patient.first_name.ilike(f"%{search}%") | Patient.last_name.ilike(f"%{search}%") | Patient.document_number.ilike(f"%{search}%")
+        if search and search.strip():
+            clean_search = search.strip()
+            full_name = func.concat(Patient.first_name, " ", Patient.last_name)
+            phrase_filter = (
+                full_name.ilike(f"%{clean_search}%")
+                | Patient.first_name.ilike(f"%{clean_search}%")
+                | Patient.last_name.ilike(f"%{clean_search}%")
+                | Patient.document_number.ilike(f"%{clean_search}%")
+            )
+            terms = clean_search.split()
+            term_filters = [
+                (Patient.first_name.ilike(f"%{t}%") | Patient.last_name.ilike(f"%{t}%") | Patient.document_number.ilike(f"%{t}%"))
+                for t in terms
+            ]
+            from sqlalchemy import and_
+            f = phrase_filter | and_(*term_filters)
             query = query.where(f)
             count_q = count_q.where(f)
         total = (await self.db.execute(count_q)).scalar() or 0

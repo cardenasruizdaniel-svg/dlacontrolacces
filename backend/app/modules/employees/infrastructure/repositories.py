@@ -107,8 +107,17 @@ class EmployeeRepository:
         count_query = select(func.count(Employee.id)).where(Employee.is_deleted == False)
 
         if company_id:
-            query = query.where(Employee.company_id == company_id)
-            count_query = count_query.where(Employee.company_id == company_id)
+            if company_id == "dla-company-main":
+                comp_filter = (Employee.company_id != None)
+            else:
+                comp_filter = (
+                    (Employee.company_id == company_id) |
+                    (Employee.company_id == None) |
+                    (Employee.company_id == "dla-company-main")
+                )
+            query = query.where(comp_filter)
+            count_query = count_query.where(comp_filter)
+
         if department_id:
             query = query.where(Employee.department_id == department_id)
             count_query = count_query.where(Employee.department_id == department_id)
@@ -117,9 +126,36 @@ class EmployeeRepository:
             count_query = count_query.where(Employee.status == status)
         if search and search.strip():
             clean_search = search.strip()
+            
+            full_name_1 = func.concat(Employee.first_name, " ", Employee.last_name)
+            full_name_2 = func.concat(
+                Employee.first_name, " ",
+                func.coalesce(Employee.middle_name, ""), " ",
+                Employee.last_name, " ",
+                func.coalesce(Employee.second_last_name, "")
+            )
+
+            phrase_filter = (
+                full_name_1.ilike(f"%{clean_search}%")
+                | full_name_2.ilike(f"%{clean_search}%")
+                | Employee.first_name.ilike(f"%{clean_search}%")
+                | Employee.last_name.ilike(f"%{clean_search}%")
+                | Employee.middle_name.ilike(f"%{clean_search}%")
+                | Employee.second_last_name.ilike(f"%{clean_search}%")
+                | Employee.document_number.ilike(f"%{clean_search}%")
+                | Employee.code.ilike(f"%{clean_search}%")
+                | Employee.email.ilike(f"%{clean_search}%")
+                | Employee.phone.ilike(f"%{clean_search}%")
+                | Employee.mobile.ilike(f"%{clean_search}%")
+                | Employee.username.ilike(f"%{clean_search}%")
+                | Employee.city.ilike(f"%{clean_search}%")
+                | Employee.address.ilike(f"%{clean_search}%")
+            )
+
             terms = clean_search.split()
+            term_filters = []
             for term in terms:
-                search_filter = (
+                tf = (
                     Employee.first_name.ilike(f"%{term}%")
                     | Employee.last_name.ilike(f"%{term}%")
                     | Employee.middle_name.ilike(f"%{term}%")
@@ -129,25 +165,25 @@ class EmployeeRepository:
                     | Employee.email.ilike(f"%{term}%")
                     | Employee.phone.ilike(f"%{term}%")
                     | Employee.mobile.ilike(f"%{term}%")
-                    | Employee.job_position.ilike(f"%{term}%")
                     | Employee.username.ilike(f"%{term}%")
                     | Employee.city.ilike(f"%{term}%")
                     | Employee.address.ilike(f"%{term}%")
                 )
-                query = query.where(search_filter)
-                count_query = count_query.where(search_filter)
+                term_filters.append(tf)
+
+            from sqlalchemy import and_
+            combined_search = phrase_filter | and_(*term_filters)
+            query = query.where(combined_search)
+            count_query = count_query.where(combined_search)
 
         query = query.options(selectinload(Employee.branch)).order_by(
             func.lower(Employee.first_name).asc(),
             func.lower(Employee.last_name).asc()
         ).offset(skip).limit(limit)
 
-        import asyncio
-        total_result, items_result = await asyncio.gather(
-            self.db.execute(count_query),
-            self.db.execute(query),
-        )
+        total_result = await self.db.execute(count_query)
         total = total_result.scalar() or 0
+        items_result = await self.db.execute(query)
         return list(items_result.scalars().all()), total
 
     async def count_by_company(self, company_id: str) -> int:
