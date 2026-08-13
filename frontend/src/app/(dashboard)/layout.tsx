@@ -8,6 +8,7 @@ import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Smartphone } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
+import { useInactivityLogout } from "@/hooks/useInactivityLogout";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isLoading, loadUser } = useAuthStore();
@@ -17,6 +18,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const isAttendanceKiosk = pathname === "/attendance" || pathname?.startsWith("/attendance/");
   const isMobilePWA = pathname === "/mobile" || pathname?.startsWith("/mobile/");
+
+  // Enable 15-minute inactivity auto-logout (bypassed on public attendance station)
+  useInactivityLogout(!isAttendanceKiosk);
 
   useEffect(() => {
     loadUser();

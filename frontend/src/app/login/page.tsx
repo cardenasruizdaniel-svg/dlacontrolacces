@@ -45,6 +45,9 @@ function LoginContent() {
 
   useEffect(() => {
     setMounted(true);
+    if (searchParams.get("reason") === "inactivity") {
+      setError("Su sesión ha sido cerrada automáticamente tras 15 minutos de inactividad por seguridad.");
+    }
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
       navigator.serviceWorker.getRegistrations().then((registrations) => {
         for (let registration of registrations) {
