@@ -270,7 +270,7 @@ async def create_patient(client_id: str, body: PatientCreateRequest, current_use
 
 @router.delete("/{client_id}/patients/{patient_id}")
 async def delete_patient(client_id: str, patient_id: str, current_user: CurrentUser, db: DbSession) -> dict:
-    return await get_service(db).delete_patient(client_id, patient_id)
+    return await get_service(db).delete_patient(client_id, patient_id, db=db)
 
 
 @router.post("/{client_id}/projects", status_code=201)

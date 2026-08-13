@@ -189,12 +189,31 @@ class ClientService:
             total=total, page=page, page_size=page_size,
         )
 
-    async def delete_patient(self, client_id: str, patient_id: str) -> dict:
+    async def delete_patient(self, client_id: str, patient_id: str, db: any = None) -> dict:
         patient = await self.patient_repo.get_by_id(patient_id)
         if not patient or patient.client_id != client_id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paciente / Visita no encontrada")
+
+        if db:
+            from sqlalchemy import select, func
+            from app.shared.database.models_scheduling import Shift, ScheduleSeries, Schedule
+            from app.shared.database.models_access import AccessRecord
+
+            shift_count = (await db.execute(select(func.count(Shift.id)).where((Shift.persona_id == patient_id) | (Shift.patient_id == patient_id)))).scalar() or 0
+            series_count = (await db.execute(select(func.count(ScheduleSeries.id)).where(ScheduleSeries.persona_id == patient_id))).scalar() or 0
+            schedule_count = (await db.execute(select(func.count(Schedule.id)).where(Schedule.persona_id == patient_id))).scalar() or 0
+            access_count = (await db.execute(select(func.count(AccessRecord.id)).where(AccessRecord.persona_id == patient_id))).scalar() or 0
+
+            total_movements = shift_count + series_count + schedule_count + access_count
+            if total_movements > 0:
+                full_name = f"{patient.first_name} {patient.last_name}".strip()
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se puede eliminar la visita/paciente '{full_name}' porque cuenta con {total_movements} turnos, citas o marcaciones registradas para trazabilidad. Se recomienda cambiar su estado a 'Inactivo'."
+                )
+
         await self.patient_repo.soft_delete(patient_id)
-        return {"message": "Patient deleted successfully"}
+        return {"message": "Paciente / Visita eliminada correctamente"}
 
     async def add_contact(self, client_id: str, **kwargs: dict) -> dict:
         contact = await self.contact_repo.create(client_id=client_id, **kwargs)

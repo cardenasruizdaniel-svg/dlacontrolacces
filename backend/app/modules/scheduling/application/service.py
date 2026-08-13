@@ -137,13 +137,19 @@ class SchedulingService:
 
         if db:
             from sqlalchemy import select, func
-            from app.shared.database.models_scheduling import Shift, ScheduleSeries
+            from app.shared.database.models_scheduling import Shift, ScheduleSeries, Schedule
 
             shift_count = (await db.execute(select(func.count(Shift.id)).where(Shift.shift_template_id == template_id))).scalar() or 0
             series_count = (await db.execute(select(func.count(ScheduleSeries.id)).where(ScheduleSeries.shift_template_id == template_id))).scalar() or 0
+            schedule_count = (await db.execute(select(func.count(Schedule.id)).where(Schedule.shift_template_id == template_id))).scalar() or 0
 
-            # Allow soft delete even if in use. The history remains for old shifts.
-            
+            total_movements = shift_count + series_count + schedule_count
+            if total_movements > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se puede eliminar la plantilla de turno '{template.name}' porque cuenta con {total_movements} turnos o programaciones históricas asociadas necesarias para informes y trazabilidad. Le sugerimos modificar su información o cambiar su estado a 'Inactivo'."
+                )
+
         await self.template_repo.soft_delete(template_id)
 
     async def list_templates(self, company_id: str, page: int = 1, page_size: int = 100) -> dict:
