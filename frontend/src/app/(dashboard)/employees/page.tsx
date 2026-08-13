@@ -693,6 +693,27 @@ function EmployeeForm({
   );
 }
 
+function highlightMatchText(text: string | null | undefined, query: string) {
+  if (!text) return "";
+  if (!query || !query.trim()) return text;
+  const q = query.trim();
+  const escapedQuery = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = text.split(new RegExp(`(${escapedQuery})`, "gi"));
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.toLowerCase() === q.toLowerCase() ? (
+          <mark key={i} className="bg-yellow-200 text-yellow-950 font-bold px-0.5 rounded dark:bg-yellow-800 dark:text-yellow-100">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+}
+
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
@@ -1281,7 +1302,9 @@ export default function EmployeesPage() {
               ) : (
                 employees.map((emp) => (
                   <TableRow key={emp.id}>
-                    <TableCell className="font-mono text-xs font-semibold">{emp.code}</TableCell>
+                    <TableCell className="font-mono text-xs font-semibold">
+                      {highlightMatchText(emp.code, search)}
+                    </TableCell>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         {emp.photo_url ? (
@@ -1296,21 +1319,42 @@ export default function EmployeesPage() {
                             {emp.first_name?.[0]}{emp.last_name?.[0]}
                           </div>
                         )}
-                        <span>{emp.first_name} {emp.last_name}</span>
+                        <div>
+                          <div className="text-sm font-semibold">
+                            {highlightMatchText(
+                              [emp.first_name, emp.middle_name, emp.last_name, emp.second_last_name].filter(Boolean).join(" "),
+                              search
+                            )}
+                          </div>
+                          {search && emp.email && emp.email.toLowerCase().includes(search.trim().toLowerCase()) && (
+                            <div className="text-[10px] text-muted-foreground">
+                              Email: {highlightMatchText(emp.email, search)}
+                            </div>
+                          )}
+                          {search && emp.username && emp.username.toLowerCase().includes(search.trim().toLowerCase()) && (
+                            <div className="text-[10px] text-muted-foreground">
+                              Usuario: {highlightMatchText(emp.username, search)}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs">{emp.document_type} {emp.document_number}</TableCell>
+                    <TableCell className="text-xs">
+                      {emp.document_type} {highlightMatchText(emp.document_number, search)}
+                    </TableCell>
                     <TableCell>
                       {emp.branch_name ? (
                         <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 gap-1 font-normal">
                           <Building2 className="h-3 w-3" />
-                          {emp.branch_name}
+                          {highlightMatchText(emp.branch_name, search)}
                         </Badge>
                       ) : (
                         <span className="text-xs text-muted-foreground italic">🏢 Sede Principal</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-xs">{emp.city || "Armenia"} ({emp.department_loc || "Quindío"})</TableCell>
+                    <TableCell className="text-xs">
+                      {highlightMatchText(emp.city || "Armenia", search)} ({highlightMatchText(emp.department_loc || "Quindío", search)})
+                    </TableCell>
                     <TableCell>
                       <select
                         className={`text-xs font-semibold rounded-md px-2 py-1 border transition-colors cursor-pointer ${
