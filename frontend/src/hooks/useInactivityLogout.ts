@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
 
-const INACTIVITY_LIMIT_MS = 15 * 60 * 1000; // 15 Minutes
+const INACTIVITY_LIMIT_MS = 20 * 60 * 1000; // 20 Minutes
 const STORAGE_KEY = "dla_last_activity_ts";
 const CHECK_INTERVAL_MS = 10000; // Check every 10 seconds
 const THROTTLE_MS = 5000; // Throttle activity updates every 5 seconds
@@ -13,10 +13,19 @@ export function useInactivityLogout(isEnabled: boolean = true) {
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const user = useAuthStore((state) => state.user);
   const lastUpdateRef = useRef<number>(Date.now());
 
+  // Check if current user is Super Admin (exempt from 20-minute auto-logout rule)
+  const isSuperAdmin = Boolean(user?.is_superuser) ||
+    (typeof user?.role === "string" && (user.role as string).toLowerCase().includes("super")) ||
+    (typeof user?.role === "object" && Boolean((user.role as any)?.name?.toLowerCase().includes("super"))) ||
+    user?.email?.toLowerCase() === "admin@dlaredes.com.co" ||
+    (user as any)?.username?.toLowerCase() === "admin";
+
   useEffect(() => {
-    if (!isEnabled || !isAuthenticated || typeof window === "undefined") return;
+    // Exclude SuperAdmin from auto-logout so they can keep the session open indefinitely
+    if (!isEnabled || !isAuthenticated || isSuperAdmin || typeof window === "undefined") return;
 
     // Set initial activity timestamp if not set
     const initTs = Date.now();
@@ -45,7 +54,7 @@ export function useInactivityLogout(isEnabled: boolean = true) {
         const elapsed = Date.now() - lastTs;
 
         if (elapsed >= INACTIVITY_LIMIT_MS) {
-          console.warn(`[Auto-Logout] Inactividad de 15 minutos detectada (${Math.round(elapsed / 1000)}s). Cerrando sesión.`);
+          console.warn(`[Auto-Logout] Inactividad de 20 minutos detectada (${Math.round(elapsed / 1000)}s). Cerrando sesión.`);
           logout();
           localStorage.removeItem(STORAGE_KEY);
           router.push("/login?reason=inactivity");
@@ -63,5 +72,5 @@ export function useInactivityLogout(isEnabled: boolean = true) {
       });
       clearInterval(intervalId);
     };
-  }, [isEnabled, isAuthenticated, logout, router]);
+  }, [isEnabled, isAuthenticated, isSuperAdmin, logout, router]);
 }
