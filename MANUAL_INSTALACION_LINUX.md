@@ -88,6 +88,8 @@ RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 NEXT_PUBLIC_API_URL=/api/v1
 ```
 
+> 📌 Para más información sobre la instalación de PostgreSQL nativo (fuera de Docker) o en la nube (AWS RDS, Supabase), consulte el **[MANUAL_POSTGRESQL.md](MANUAL_POSTGRESQL.md)**.
+
 ### Paso 3: Desplegar los Servicios con Docker Compose
 ```bash
 docker compose build --parallel

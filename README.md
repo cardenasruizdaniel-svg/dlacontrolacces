@@ -14,8 +14,9 @@ chmod +x install_linux.sh
 ./install_linux.sh
 ```
 
-Consulte el manual completo de instalación en Linux:
-📄 **[MANUAL_INSTALACION_LINUX.md](MANUAL_INSTALACION_LINUX.md)**
+Consulte los manuales completos de despliegue y base de datos:
+📄 **[MANUAL_INSTALACION_LINUX.md](MANUAL_INSTALACION_LINUX.md)**  
+🗄️ **[MANUAL_POSTGRESQL.md](MANUAL_POSTGRESQL.md)**
 
 ---
 

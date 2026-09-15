@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def assemble_db_connection(cls, v: str | None) -> str:
-        if not v or v == "" or "localhost:5432" in v:
+        if not v or v == "":
             return "sqlite+aiosqlite:///./dla_access.db"
         if v.startswith("postgres://"):
             v = v.replace("postgres://", "postgresql+asyncpg://", 1)
