@@ -112,11 +112,31 @@ echo -e "${GREEN}✓ Sembrado de datos iniciales completado.${NC}"
 echo -e "${YELLOW}[6/7] Configurando permisos de scripts y servicio de arranque automático...${NC}"
 chmod +x start_linux.sh stop_linux.sh status_linux.sh install_linux.sh 2>/dev/null || true
 
-if [ -f dla-access.service ] && command -v systemctl &> /dev/null; then
-    sudo cp dla-access.service /etc/systemd/system/dla-access.service 2>/dev/null || true
+CURRENT_DIR="$(pwd)"
+if command -v systemctl &> /dev/null; then
+    cat <<EOF > /tmp/dla-access.service
+[Unit]
+Description=DLA Access Enterprise ERP Service (Docker Compose Daemon)
+Documentation=https://github.com/cardenasruizdaniel-svg/dlacontrolacces
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${CURRENT_DIR}
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
+ExecReload=/usr/bin/docker compose restart
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    sudo cp /tmp/dla-access.service /etc/systemd/system/dla-access.service 2>/dev/null || true
     sudo systemctl daemon-reload 2>/dev/null || true
     sudo systemctl enable dla-access.service 2>/dev/null || true
-    echo -e "${GREEN}✓ Servicio Systemd (dla-access.service) registrado para arranque automático al reiniciar el servidor.${NC}"
+    echo -e "${GREEN}✓ Servicio Systemd (dla-access.service) registrado en '${CURRENT_DIR}' para arranque automático.${NC}"
 fi
 
 # 7. Verificación de estado de la aplicación
