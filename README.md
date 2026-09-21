@@ -14,6 +14,11 @@ chmod +x install_linux.sh
 ./install_linux.sh
 ```
 
+### Control y Operación del Sistema en Linux
+* **Iniciar:** `./start_linux.sh` (o `sudo systemctl start dla-access`)
+* **Detener:** `./stop_linux.sh` (o `sudo systemctl stop dla-access`)
+* **Estado:** `./status_linux.sh` (o `sudo systemctl status dla-access`)
+
 Consulte los manuales completos de despliegue y base de datos:
 📄 **[MANUAL_INSTALACION_LINUX.md](MANUAL_INSTALACION_LINUX.md)**  
 🗄️ **[MANUAL_POSTGRESQL.md](MANUAL_POSTGRESQL.md)**

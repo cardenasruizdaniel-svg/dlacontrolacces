@@ -143,7 +143,35 @@ sudo certbot renew --dry-run
 
 ---
 
-## 📦 6. Mantenimiento, Copias de Seguridad y Actualizaciones
+## 📦 6. Operación, Servicio Systemd y Copias de Seguridad
+
+### Comandos de Control (Misma Operativa que DEAVisitas / DEATurno)
+El proyecto cuenta con scripts de control rápido de ciclo de vida:
+```bash
+# Iniciar servicios en segundo plano
+./start_linux.sh
+
+# Detener todos los servicios
+./stop_linux.sh
+
+# Ver estado de contenedores y consumo de recursos
+./status_linux.sh
+```
+
+### Arranque Automático al Iniciar el Servidor (Servicio Systemd)
+El script `install_linux.sh` registra automáticamente el servicio `dla-access.service`. También puede registrarlo manualmente:
+
+```bash
+sudo cp dla-access.service /etc/systemd/system/dla-access.service
+sudo systemctl daemon-reload
+sudo systemctl enable dla-access.service
+sudo systemctl start dla-access.service
+```
+
+Para verificar el estado del servicio en Systemd:
+```bash
+sudo systemctl status dla-access.service
+```
 
 ### Copia de Seguridad de la Base de Datos PostgreSQL
 ```bash

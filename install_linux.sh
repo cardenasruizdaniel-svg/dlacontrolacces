@@ -108,8 +108,19 @@ echo -e "${YELLOW}[5/6] Sembrando datos iniciales y usuario Super Admin...${NC}"
 $DOCKER_COMPOSE_CMD exec -T backend python seed.py
 echo -e "${GREEN}✓ Sembrado de datos iniciales completado.${NC}"
 
-# 6. Verificación de estado de la aplicación
-echo -e "${YELLOW}[6/6] Verificando salud del sistema...${NC}"
+# 6. Permisos de scripts y Servicio Systemd (Arranque Automático)
+echo -e "${YELLOW}[6/7] Configurando permisos de scripts y servicio de arranque automático...${NC}"
+chmod +x start_linux.sh stop_linux.sh status_linux.sh install_linux.sh 2>/dev/null || true
+
+if [ -f dla-access.service ] && command -v systemctl &> /dev/null; then
+    sudo cp dla-access.service /etc/systemd/system/dla-access.service 2>/dev/null || true
+    sudo systemctl daemon-reload 2>/dev/null || true
+    sudo systemctl enable dla-access.service 2>/dev/null || true
+    echo -e "${GREEN}✓ Servicio Systemd (dla-access.service) registrado para arranque automático al reiniciar el servidor.${NC}"
+fi
+
+# 7. Verificación de estado de la aplicación
+echo -e "${YELLOW}[7/7] Verificando salud del sistema...${NC}"
 $DOCKER_COMPOSE_CMD ps
 
 echo ""
@@ -124,8 +135,9 @@ echo -e "${GREEN}Credenciales de Acceso Administrador:${NC}"
 echo -e "   Usuario:    ${YELLOW}admin@dlaredes.com.co${NC} (o usuario: ${YELLOW}admin${NC})"
 echo -e "   Contraseña: ${YELLOW}Dlaredes2026*${NC}"
 echo ""
-echo -e "${GREEN}Comandos útiles para gestión:${NC}"
-echo -e "   Ver logs:       $DOCKER_COMPOSE_CMD logs -f"
-echo -e "   Reiniciar:      $DOCKER_COMPOSE_CMD restart"
-echo -e "   Detener:        $DOCKER_COMPOSE_CMD down"
+echo -e "${GREEN}Comandos de Gestión (Igual que DEAVisitas / DEATurno):${NC}"
+echo -e "   Iniciar:        ${YELLOW}./start_linux.sh${NC}   (o sudo systemctl start dla-access)"
+echo -e "   Detener:        ${YELLOW}./stop_linux.sh${NC}    (o sudo systemctl stop dla-access)"
+echo -e "   Estado:         ${YELLOW}./status_linux.sh${NC}  (o sudo systemctl status dla-access)"
+echo -e "   Ver logs:       ${YELLOW}$DOCKER_COMPOSE_CMD logs -f${NC}"
 echo -e "${BLUE}======================================================================${NC}"
